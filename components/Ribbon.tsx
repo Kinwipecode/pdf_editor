@@ -24,7 +24,7 @@ import { ScalePresetDialog, calculateScalePixelsPerUnit } from './measure/ScaleP
 import { openAreaPopoutWindow, closeAreaPopoutWindow, openDistPopoutWindow, closeDistPopoutWindow, openVolPopoutWindow, closeVolPopoutWindow } from '@/lib/popoutManager';
 
 
-const RIBBON_TABS = ['Start', 'Ansicht', 'Bearbeiten', 'Zeichnen', 'Messen', 'Seiten'] as const;
+const RIBBON_TABS = ['Start', 'Ansicht', 'Bearbeiten', 'Zeichnen', 'Messen', 'Auto Fläche', 'Seiten'] as const;
 type RibbonTab = typeof RIBBON_TABS[number];
 
 interface ToolBtnProps {
@@ -514,12 +514,8 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
             <RibbonGroup label="Messen">
               <ToolBtn icon={<MdTimeline />} label="Abstand" tool="measure-distance" tooltip="Abstand messen" />
               <ToolBtn icon={<MdOutlineSquare />} label="Fläche" tool="measure-area" tooltip="Fläche messen" />
-              <ToolBtn icon={<MdViewInAr />} label="Volumen" tool="measure-volume" tooltip="Volumen messen (Grundfläche zeichnen + lichte Raumhöhe eingeben)" />
-              <ToolBtn icon={<MdAutoFixHigh />} label="Auto-Raum" tool="measure-magic-area" tooltip="Automatische Raumerkennung — Klick in einen Raum" />
               <ToolBtn icon={<MdOutlineCircle />} label="Kreis-Fläche" tool="measure-circle" tooltip="Kreisfläche messen (über Diagonale)" />
               <ToolBtn icon={<MdZoomIn />} label="Bereich zoomen" tool="zoom-area" tooltip="Ausschnitt vergrößern — Rechteckigen Bereich mit der Maus aufziehen" />
-              <ToolBtn icon={<MdGesture />} label="Spray-Raum" tool="measure-spray-area" tooltip="Maus über den Raum ziehen (sprühen) — System erkennt automatisch den Raum" />
-              <ToolBtn icon={<MdCropFree />} label="Grob-Erkennung" tool="measure-rough-area" tooltip="Raum grob umreißen — System sucht die genauen Grenzen danach" />
             </RibbonGroup>
             <RibbonGroup label={
               <span style={{ fontFamily: 'monospace', letterSpacing: '-0.5px', fontWeight: 600, color: '#4f8ef7' }}>
@@ -654,6 +650,17 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
             </RibbonGroup>
           </>
         )}
+
+        {activeTab === 'Auto Fläche' && (
+          <>
+            <RibbonGroup label="Auto-Erkennung">
+              <ToolBtn icon={<MdAutoFixHigh />} label="Auto-Raum" tool="measure-magic-area" tooltip="Automatische Raumerkennung — Klick in einen Raum" />
+              <ToolBtn icon={<MdGesture />} label="Spray-Raum" tool="measure-spray-area" tooltip="Maus über den Raum ziehen (sprühen) — System erkennt automatisch den Raum" />
+              <ToolBtn icon={<MdCropFree />} label="Grob-Erkennung" tool="measure-rough-area" tooltip="Raum grob umreißen — System sucht die genauen Grenzen danach" />
+            </RibbonGroup>
+          </>
+        )}
+
         {activeTab === 'Seiten' && (
           <>
             <RibbonGroup label="Seite verwalten">
