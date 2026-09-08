@@ -1,11 +1,10 @@
 import type { NextConfig } from "next";
 
 const isGithubActions = process.env.GITHUB_ACTIONS === 'true';
-const BASE_PATH = isGithubActions ? '/Kinpdf' : '';
+const BASE_PATH = isGithubActions ? '/pdf_editor' : '';
 
 const nextConfig: NextConfig = {
-  // Static export for GitHub Pages when building in CI
-  ...(isGithubActions ? { output: 'export' } : {}),
+  output: 'export',
   basePath: BASE_PATH,
   assetPrefix: BASE_PATH ? `${BASE_PATH}/` : undefined,
   env: {
