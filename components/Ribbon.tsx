@@ -222,16 +222,37 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
 
   return (
     <div className="ribbon">
-      <div className="ribbon-tabs">
-        {RIBBON_TABS.map((tab) => (
-          <button
-            key={tab}
-            className={`ribbon-tab-btn ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab)}
+      <div className="ribbon-tabs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: '100%' }}>
+          {RIBBON_TABS.map((tab) => (
+            <button
+              key={tab}
+              className={`ribbon-tab-btn ${activeTab === tab ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 14 }}>
+          <span
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              color: '#4f8ef7',
+              background: 'rgba(79, 142, 247, 0.15)',
+              border: '1px solid rgba(79, 142, 247, 0.35)',
+              padding: '2px 10px',
+              borderRadius: '12px',
+              letterSpacing: '0.5px',
+              userSelect: 'none',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.2)',
+            }}
+            title="PDF Editor Pro Version"
           >
-            {tab}
-          </button>
-        ))}
+            v1.0.0
+          </span>
+        </div>
       </div>
 
       <div className="ribbon-content">
