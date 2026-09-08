@@ -11,7 +11,7 @@ import {
   MdArrowRightAlt, MdStraight, MdFolderOpen, MdSave, MdPrint,
   MdTrendingUp, MdShortcut, MdArrowRight, MdCalculate, MdFunctions,
   MdAddBox, MdDeleteSweep, MdArrowUpward, MdArrowDownward, MdContentCopy,
-  MdDocumentScanner
+  MdDocumentScanner, MdAutoFixHigh, MdAspectRatio, MdCenterFocusStrong
 } from 'react-icons/md';
 import { BsVectorPen } from 'react-icons/bs';
 import { BiEraser } from 'react-icons/bi';
@@ -267,18 +267,71 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
             <RibbonGroup label="Zoom">
               <ToolBtn icon={<MdZoomIn />} label="Vergrößern" onClick={() => adjustZoom(0.25)} tooltip="Vergrößern (Strg++)" />
               <ToolBtn icon={<MdZoomOut />} label="Verkleinern" onClick={() => adjustZoom(-0.25)} tooltip="Verkleinern (Strg+-)" />
-              <ToolBtn icon={<MdFitScreen />} label="Anpassen" onClick={fitPage} tooltip="An Seite anpassen (Strg+0)" />
+              <ToolBtn
+                icon={<MdFitScreen />}
+                label="Ganze Seite"
+                onClick={() => {
+                  if (!doc) return;
+                  const canvasArea = document.querySelector('.canvas-area') as HTMLElement;
+                  const pageEl = canvasArea?.querySelector('.pdf-page-container') as HTMLElement;
+                  if (!canvasArea || !pageEl) { setZoom(doc.id, 1.0); return; }
+                  const currentZoom = doc.zoom;
+                  const unscaledW = pageEl.clientWidth / currentZoom;
+                  const unscaledH = pageEl.clientHeight / currentZoom;
+                  const containerW = Math.max(200, canvasArea.clientWidth - 48);
+                  const containerH = Math.max(200, canvasArea.clientHeight - 48);
+                  if (unscaledW > 0 && unscaledH > 0) {
+                    const zoomW = containerW / unscaledW;
+                    const zoomH = containerH / unscaledH;
+                    setZoom(doc.id, Math.round(Math.min(zoomW, zoomH) * 100) / 100);
+                    canvasArea.scrollLeft = 0;
+                    canvasArea.scrollTop = 0;
+                  }
+                }}
+                tooltip="An ganze Seite anpassen (Strg+0)"
+              />
+              <ToolBtn
+                icon={<MdAspectRatio />}
+                label="Breite"
+                onClick={() => {
+                  if (!doc) return;
+                  const canvasArea = document.querySelector('.canvas-area') as HTMLElement;
+                  const pageEl = canvasArea?.querySelector('.pdf-page-container') as HTMLElement;
+                  if (!canvasArea || !pageEl) return;
+                  const currentZoom = doc.zoom;
+                  const unscaledW = pageEl.clientWidth / currentZoom;
+                  const containerW = Math.max(200, canvasArea.clientWidth - 48);
+                  if (unscaledW > 0) {
+                    setZoom(doc.id, Math.round((containerW / unscaledW) * 100) / 100);
+                    canvasArea.scrollLeft = 0;
+                  }
+                }}
+                tooltip="An Fensterbreite anpassen"
+              />
+              <ToolBtn
+                icon={<MdCenterFocusStrong />}
+                label="100%"
+                onClick={() => doc && setZoom(doc.id, 1.0)}
+                tooltip="Originalgröße (100% / 1:1)"
+              />
+              <ToolBtn
+                icon={<MdZoomIn />}
+                label="Bereich"
+                tool="zoom-area"
+                tooltip="Bereich-Zoom — Rechteckigen Ausschnitt mit der Maus aufziehen"
+              />
             </RibbonGroup>
-            <RibbonGroup label="Drehen">
+            <RibbonGroup label="Navigation">
+              <ToolBtn icon={<MdPanTool />} label="Hand (Pan)" tool="hand" tooltip="Hand-Werkzeug zum Verschieben der Seite (H)" />
               <ToolBtn
                 icon={<MdRotateRight />}
                 label="Drehen"
                 onClick={() => doc && setRotation(doc.id, (doc.rotation + 90) % 360)}
-                tooltip="90° drehen"
+                tooltip="90° im Uhrzeigersinn drehen"
               />
             </RibbonGroup>
             <RibbonGroup label="Ansicht">
-              <ToolBtn icon={<MdViewSidebar />} label="Miniaturen" onClick={toggleSidebar} tooltip="Miniaturvorschau" />
+              <ToolBtn icon={<MdViewSidebar />} label="Miniaturen" onClick={toggleSidebar} tooltip="Miniaturvorschau umschalten" />
             </RibbonGroup>
           </>
         )}
@@ -457,7 +510,11 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
             <RibbonGroup label="Messen">
               <ToolBtn icon={<MdTimeline />} label="Abstand" tool="measure-distance" tooltip="Abstand messen" />
               <ToolBtn icon={<MdOutlineSquare />} label="Fläche" tool="measure-area" tooltip="Fläche messen" />
+              <ToolBtn icon={<MdAutoFixHigh />} label="Auto-Raum" tool="measure-magic-area" tooltip="Automatische Raumerkennung — Klick in einen Raum" />
               <ToolBtn icon={<MdOutlineCircle />} label="Kreis-Fläche" tool="measure-circle" tooltip="Kreisfläche messen (über Diagonale)" />
+              <ToolBtn icon={<MdZoomIn />} label="Bereich zoomen" tool="zoom-area" tooltip="Ausschnitt vergrößern — Rechteckigen Bereich mit der Maus aufziehen" />
+              <ToolBtn icon={<MdGesture />} label="Spray-Raum" tool="measure-spray-area" tooltip="Maus über den Raum ziehen (sprühen) — System erkennt automatisch den Raum" />
+              <ToolBtn icon={<MdCropFree />} label="Grob-Erkennung" tool="measure-rough-area" tooltip="Raum grob umreißen — System sucht die genauen Grenzen danach" />
             </RibbonGroup>
             <RibbonGroup label={
               <span style={{ fontFamily: 'monospace', letterSpacing: '-0.5px' }}>

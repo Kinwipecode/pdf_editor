@@ -1,27 +1,32 @@
 import type { NextConfig } from "next";
 
-const BASE_PATH = '/Kinpdf';
+const isGithubActions = process.env.GITHUB_ACTIONS === 'true';
+const BASE_PATH = isGithubActions ? '/Kinpdf' : '';
 
-const nextConfig: any = {
-  // Static export for GitHub Pages
-  output: 'export',
-  // Match the repository name
+const nextConfig: NextConfig = {
+  // Static export for GitHub Pages when building in CI
+  ...(isGithubActions ? { output: 'export' } : {}),
   basePath: BASE_PATH,
-  // Match the repository name for assets
-  assetPrefix: `${BASE_PATH}/`,
-  // Environment variables
+  assetPrefix: BASE_PATH ? `${BASE_PATH}/` : undefined,
   env: {
     NEXT_PUBLIC_BASE_PATH: BASE_PATH,
   },
   // Turbopack config (Next.js 16+)
   turbopack: {
     resolveAlias: {
-      canvas: { browser: "./empty-module.js" },
+      canvas: './empty-module.js',
     },
+  },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      canvas: false,
+    };
+    return config;
   },
   transpilePackages: ['pdfjs-dist'],
   images: {
-    unoptimized: true, // Required for static export
+    unoptimized: true,
   },
   typescript: {
     ignoreBuildErrors: true,

@@ -50,18 +50,32 @@ function PDFPage({
       const canvas = canvasRef.current!;
       const ctx = canvas.getContext('2d')!;
 
+      // Browser hard limit for canvas dimension (16,384px).
+      // Rendering natively at 1:1 device resolution guarantees crystal clear vector text & crisp lines (matching Bild 1).
+      const MAX_CANVAS_DIM = 16384;
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
       if (fileType === 'pdf' && pdfDoc) {
         if (typeof physicalPage !== 'number') {
           // Blank page
           const w = 595; // A4 approx
           const h = 842;
-          canvas.width = w * zoom * dpr;
-          canvas.height = h * zoom * dpr;
-          canvas.style.width = `${w * zoom}px`;
-          canvas.style.height = `${h * zoom}px`;
+          const scaledW = w * zoom;
+          const scaledH = h * zoom;
+          const targetW = scaledW * dpr;
+          const targetH = scaledH * dpr;
+          const maxDim = Math.max(targetW, targetH);
+          const ratio = maxDim > MAX_CANVAS_DIM ? MAX_CANVAS_DIM / maxDim : 1.0;
+
+          canvas.width = Math.round(targetW * ratio);
+          canvas.height = Math.round(targetH * ratio);
+          canvas.style.width = `${scaledW}px`;
+          canvas.style.height = `${scaledH}px`;
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-          setDims({ width: w * zoom, height: h * zoom, scale: zoom });
+          setDims({ width: scaledW, height: scaledH, scale: zoom });
           return;
         }
 
@@ -71,16 +85,28 @@ function PDFPage({
         } catch { return; }
         if (cancelled) return;
 
-        const viewport = page.getViewport({ scale: zoom * dpr, rotation });
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        canvas.style.width = `${viewport.width / dpr}px`;
-        canvas.style.height = `${viewport.height / dpr}px`;
+        const targetScale = zoom * dpr;
+        const fullViewport = page.getViewport({ scale: targetScale, rotation });
+        const cssWidth = fullViewport.width / dpr;
+        const cssHeight = fullViewport.height / dpr;
 
-        setDims({ width: viewport.width / dpr, height: viewport.height / dpr, scale: zoom });
+        // Render at 1:1 native vector resolution whenever possible (up to 16,384px)
+        const maxDim = Math.max(fullViewport.width, fullViewport.height);
+        const bufferRatio = maxDim > MAX_CANVAS_DIM ? MAX_CANVAS_DIM / maxDim : 1.0;
+
+        const renderViewport = bufferRatio === 1.0
+          ? fullViewport
+          : page.getViewport({ scale: targetScale * bufferRatio, rotation });
+
+        canvas.width = Math.round(renderViewport.width);
+        canvas.height = Math.round(renderViewport.height);
+        canvas.style.width = `${cssWidth}px`;
+        canvas.style.height = `${cssHeight}px`;
+
+        setDims({ width: cssWidth, height: cssHeight, scale: zoom });
 
         renderTask.current?.cancel();
-        const task = page.render({ canvasContext: ctx, viewport });
+        const task = page.render({ canvasContext: ctx, viewport: renderViewport });
         renderTask.current = task;
         try {
           await task.promise;
@@ -107,15 +133,23 @@ function PDFPage({
           const scaledW = w * zoom;
           const scaledH = h * zoom;
 
-          canvas.width = scaledW * dpr;
-          canvas.height = scaledH * dpr;
+          const targetW = scaledW * dpr;
+          const targetH = scaledH * dpr;
+          const maxDim = Math.max(targetW, targetH);
+          const ratio = maxDim > MAX_CANVAS_DIM ? MAX_CANVAS_DIM / maxDim : 1.0;
+
+          const bufW = Math.round(targetW * ratio);
+          const bufH = Math.round(targetH * ratio);
+
+          canvas.width = bufW;
+          canvas.height = bufH;
           canvas.style.width = `${scaledW}px`;
           canvas.style.height = `${scaledH}px`;
 
           setDims({ width: scaledW, height: scaledH, scale: zoom });
 
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.setTransform(bufW / scaledW, 0, 0, bufH / scaledH, 0, 0);
+          ctx.clearRect(0, 0, scaledW, scaledH);
 
           ctx.save();
           ctx.translate(scaledW / 2, scaledH / 2);
@@ -157,26 +191,51 @@ function PDFPage({
 // ─────────────────────────────────────────────
 //  Viewer
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+//  Viewer
+// ─────────────────────────────────────────────
 interface PDFViewerProps {
   docId: string;
   onCursorPos: (pos: { x: number; y: number } | null) => void;
 }
 
 export function PDFViewer({ docId, onCursorPos }: PDFViewerProps) {
-  const { openDocuments, setCurrentPage, setPageCount, setScale, activeTool, setActiveTool } = useAppStore();
+  const { openDocuments, setCurrentPage, setPageCount, setScale, activeTool, setActiveTool, setZoom } = useAppStore();
   const doc = openDocuments.find((d) => d.id === docId);
 
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [calibratePending, setCalibratePending] = useState<{
     start: Point; end: Point; pixelDist: number;
   } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [spacePressed, setSpacePressed] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const isHandPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
-  // Helper: the actual scrollable container is PARENT (.canvas-area), not .pdf-viewer itself
-  const getScrollEl = () => scrollRef.current?.parentElement ?? null;
+  // Helper: actual scrollable container is PARENT (.canvas-area)
+  const getScrollEl = useCallback(() => scrollRef.current?.parentElement ?? null, []);
+
+  // Track spacebar for pan tool override
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
+        if (!spacePressed) setSpacePressed(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setSpacePressed(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [spacePressed]);
 
   // Load Document
   useEffect(() => {
@@ -198,11 +257,6 @@ export function PDFViewer({ docId, onCursorPos }: PDFViewerProps) {
         setPageCount(docId, loaded.numPages);
       } catch (err) {
         console.error('PDF Load Error:', err);
-        if (!cancelled) {
-          // Set an error state or show a message
-          const msg = err instanceof Error ? err.message : String(err);
-          // For now, we'll just log it, but "PDF wird geladen..." will stay if it fails.
-        }
       }
     })();
 
@@ -240,66 +294,165 @@ export function PDFViewer({ docId, onCursorPos }: PDFViewerProps) {
     el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [doc?.currentPage]);
 
-  // Hand pan behaviour
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (activeTool !== 'hand') return;
-    e.preventDefault();
+  // Fit Width helper
+  const handleFitWidth = useCallback(() => {
+    if (!doc || !scrollRef.current) return;
+    const pageEl = scrollRef.current.querySelector('.pdf-page-container') as HTMLElement;
     const scrollEl = getScrollEl();
-    if (!scrollEl) return;
-    isHandPanning.current = true;
-    panStart.current = {
-      x: e.clientX,
-      y: e.clientY,
-      scrollLeft: scrollEl.scrollLeft,
-      scrollTop: scrollEl.scrollTop,
-    };
-  };
+    if (!pageEl || !scrollEl) return;
 
-  const onMouseMove = (e: React.MouseEvent) => {
-    if (activeTool === 'hand') {
-      onCursorPos({ x: e.clientX, y: e.clientY });
+    const currentZoom = doc.zoom;
+    const unscaledW = pageEl.clientWidth / currentZoom;
+    const containerW = Math.max(200, scrollEl.clientWidth - 48);
+    if (unscaledW > 0) {
+      const fitZoom = Math.max(0.1, Math.min(10.0, Math.round((containerW / unscaledW) * 100) / 100));
+      setZoom(docId, fitZoom);
+      scrollEl.scrollLeft = 0;
     }
-    if (!isHandPanning.current) return;
+  }, [doc, docId, setZoom, getScrollEl]);
+
+  // Fit Page helper
+  const handleFitPage = useCallback(() => {
+    if (!doc || !scrollRef.current) return;
+    const pageEl = scrollRef.current.querySelector('.pdf-page-container') as HTMLElement;
     const scrollEl = getScrollEl();
-    if (!scrollEl) return;
-    scrollEl.scrollLeft = panStart.current.scrollLeft - (e.clientX - panStart.current.x);
-    scrollEl.scrollTop = panStart.current.scrollTop - (e.clientY - panStart.current.y);
-  };
+    if (!pageEl || !scrollEl) return;
 
-  const onMouseUp = () => { isHandPanning.current = false; };
-  const onMouseLeave = () => { onCursorPos(null); isHandPanning.current = false; };
+    const currentZoom = doc.zoom;
+    const unscaledW = pageEl.clientWidth / currentZoom;
+    const unscaledH = pageEl.clientHeight / currentZoom;
+    const containerW = Math.max(200, scrollEl.clientWidth - 48);
+    const containerH = Math.max(200, scrollEl.clientHeight - 48);
 
-  // Ctrl+Scroll zoom (Manual listener to bypass passive restrictions)
+    if (unscaledW > 0 && unscaledH > 0) {
+      const zoomW = containerW / unscaledW;
+      const zoomH = containerH / unscaledH;
+      const fitZoom = Math.max(0.1, Math.min(10.0, Math.round(Math.min(zoomW, zoomH) * 100) / 100));
+      setZoom(docId, fitZoom);
+      scrollEl.scrollLeft = 0;
+      scrollEl.scrollTop = 0;
+    }
+  }, [doc, docId, setZoom, getScrollEl]);
+
+  // Global Mouse Up / Mouse Move handlers for pan drag stability
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!isHandPanning.current) return;
+      const scrollEl = getScrollEl();
+      if (!scrollEl) return;
 
-    const handleWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey || !doc) return;
+      const dx = e.clientX - panStart.current.x;
+      const dy = e.clientY - panStart.current.y;
+      scrollEl.scrollLeft = panStart.current.scrollLeft - dx;
+      scrollEl.scrollTop = panStart.current.scrollTop - dy;
+    };
 
-      // CRITICAL: Prevent browser zoom
-      e.preventDefault();
-      e.stopPropagation();
-
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      const newZoom = Math.max(0.1, Math.min(10, doc.zoom + delta));
-
-      if (newZoom !== doc.zoom) {
-        useAppStore.getState().setZoom(docId, newZoom);
+    const handleGlobalMouseUp = () => {
+      if (isHandPanning.current) {
+        isHandPanning.current = false;
+        setIsPanning(false);
       }
     };
 
-    el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleWheel);
-  }, [docId, doc?.zoom]);
+    window.addEventListener('mousemove', handleGlobalMouseMove);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [getScrollEl]);
+
+  // Hand pan mouse down: trigger on hand tool, spacebar, or middle click (button === 1)
+  const onMouseDown = (e: React.MouseEvent) => {
+    const isMiddleClick = e.button === 1;
+    const isHandMode = activeTool === 'hand' && e.button === 0;
+    const isSpaceMode = spacePressed && e.button === 0;
+
+    if (isMiddleClick || isHandMode || isSpaceMode) {
+      e.preventDefault();
+      const scrollEl = getScrollEl();
+      if (!scrollEl) return;
+      isHandPanning.current = true;
+      setIsPanning(true);
+      panStart.current = {
+        x: e.clientX,
+        y: e.clientY,
+        scrollLeft: scrollEl.scrollLeft,
+        scrollTop: scrollEl.scrollTop,
+      };
+    }
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (activeTool === 'hand' || spacePressed) {
+      onCursorPos({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  const onMouseLeave = () => {
+    onCursorPos(null);
+  };
+
+  // Focal-Point Mouse Wheel Zooming
+  useEffect(() => {
+    const scrollEl = getScrollEl();
+    if (!scrollEl) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (!doc) return;
+      // Zoom on Ctrl+Wheel or in Hand mode / Space mode
+      const isCtrlWheel = e.ctrlKey || e.metaKey;
+      const isHandWheel = activeTool === 'hand' && e.altKey;
+
+      if (isCtrlWheel || isHandWheel) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const rect = scrollEl.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const oldZoom = doc.zoom;
+        const delta = e.deltaY > 0 ? -0.15 : 0.15;
+        const newZoom = Math.max(0.1, Math.min(10.0, Math.round((oldZoom + delta) * 100) / 100));
+
+        if (newZoom !== oldZoom) {
+          const scrollLeft = scrollEl.scrollLeft;
+          const scrollTop = scrollEl.scrollTop;
+
+          // Focal point calculation: keep location under mouse fixed
+          const contentX = scrollLeft + mouseX;
+          const contentY = scrollTop + mouseY;
+
+          const ratio = newZoom / oldZoom;
+          const newScrollLeft = contentX * ratio - mouseX;
+          const newScrollTop = contentY * ratio - mouseY;
+
+          useAppStore.getState().setZoom(docId, newZoom);
+
+          requestAnimationFrame(() => {
+            scrollEl.scrollLeft = Math.max(0, newScrollLeft);
+            scrollEl.scrollTop = Math.max(0, newScrollTop);
+          });
+        }
+      }
+    };
+
+    scrollEl.addEventListener('wheel', handleWheel, { passive: false });
+    return () => scrollEl.removeEventListener('wheel', handleWheel);
+  }, [docId, doc, activeTool, getScrollEl]);
 
   if (!doc) return null;
 
+  const isPanningActive = isPanning || isHandPanning.current;
   const cursorStyle =
-    activeTool === 'hand' ? (isHandPanning.current ? 'grabbing' : 'grab')
-      : activeTool === 'cursor' ? 'default'
-        : activeTool === 'direct-edit' ? 'cell'
-          : 'default';
+    isPanningActive ? 'grabbing'
+      : (activeTool === 'hand' || spacePressed) ? 'grab'
+        : activeTool === 'cursor' ? 'default'
+          : activeTool === 'direct-edit' ? 'cell'
+            : 'default';
+
+  const currentZoomPct = Math.round(doc.zoom * 100);
 
   return (
     <>
@@ -308,11 +461,9 @@ export function PDFViewer({ docId, onCursorPos }: PDFViewerProps) {
         className="pdf-viewer"
         style={{
           cursor: cursorStyle,
-          // userSelect: 'none' removed to allow HTML overlay selection
         }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
         onMouseLeave={onMouseLeave}
       >
         {/* Edit mode indicator banner */}
@@ -330,6 +481,7 @@ export function PDFViewer({ docId, onCursorPos }: PDFViewerProps) {
             </span>
           </div>
         )}
+
         {pdfDoc || doc.fileType === 'image' ? (
           (doc.pageOrder || []).map((physicalPage, idx) => {
             const logicalPageNum = idx + 1;
@@ -356,6 +508,104 @@ export function PDFViewer({ docId, onCursorPos }: PDFViewerProps) {
             PDF wird geladen...
           </div>
         )}
+      </div>
+
+      {/* Floating Zoom & Viewport Toolbar HUD */}
+      <div className="floating-zoom-hud" title="Zoom & Navigationswerkzeuge">
+        <button
+          className={`hud-btn ${activeTool === 'hand' ? 'active' : ''}`}
+          onClick={() => setActiveTool(activeTool === 'hand' ? 'cursor' : 'hand')}
+          title="Hand-Werkzeug zum Verschieben / Pan (H)"
+        >
+          🖐️ Pan
+        </button>
+
+        <div className="hud-sep" />
+
+        <button
+          className={`hud-btn ${activeTool === 'zoom-area' ? 'active' : ''}`}
+          onClick={() => setActiveTool(activeTool === 'zoom-area' ? 'cursor' : 'zoom-area')}
+          title="Rechteck-Zoom / Bereich vergrößern (Z)"
+        >
+          🔍 Bereich
+        </button>
+
+        <div className="hud-sep" />
+
+        <button
+          className="hud-btn"
+          onClick={() => setZoom(docId, Math.max(0.1, doc.zoom - 0.25))}
+          title="Verkleinern (Strg+-)"
+        >
+          -
+        </button>
+
+        <select
+          className="hud-select"
+          value={currentZoomPct}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === 'fit-width') {
+              handleFitWidth();
+            } else if (val === 'fit-page') {
+              handleFitPage();
+            } else {
+              setZoom(docId, (parseInt(val) || 100) / 100);
+            }
+          }}
+          title="Zoom-Stufe wählen"
+        >
+          <option value="25">25%</option>
+          <option value="50">50%</option>
+          <option value="75">75%</option>
+          <option value="100">100% (1:1)</option>
+          <option value="125">125%</option>
+          <option value="150">150%</option>
+          <option value="200">200%</option>
+          <option value="300">300%</option>
+          <option value="400">400%</option>
+          <option value="500">500%</option>
+          <option value="800">800%</option>
+          <option value="fit-width">Breite anpassen</option>
+          <option value="fit-page">Seite anpassen</option>
+          {!['25','50','75','100','125','150','200','300','400','500','800'].includes(String(currentZoomPct)) && (
+            <option value={currentZoomPct}>{currentZoomPct}%</option>
+          )}
+        </select>
+
+        <button
+          className="hud-btn"
+          onClick={() => setZoom(docId, Math.min(10.0, doc.zoom + 0.25))}
+          title="Vergrößern (Strg++)"
+        >
+          +
+        </button>
+
+        <div className="hud-sep" />
+
+        <button
+          className="hud-btn"
+          onClick={handleFitWidth}
+          title="An Fensterbreite anpassen"
+        >
+          ↔ Breite
+        </button>
+
+        <button
+          className="hud-btn"
+          onClick={handleFitPage}
+          title="Ganze Seite anpassen (Strg+0)"
+        >
+          ⛶ Seite
+        </button>
+
+        <button
+          className="hud-btn"
+          onClick={() => setZoom(docId, 1.0)}
+          title="100% Originalgröße"
+        >
+          1:1
+        </button>
       </div>
 
       {calibratePending && (

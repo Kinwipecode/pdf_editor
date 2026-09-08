@@ -10,6 +10,7 @@ import type {
 } from '@/types';
 import { MdChatBubbleOutline, MdMinimize, MdRefresh, MdDelete, MdContentCopy } from 'react-icons/md';
 import { ColorPicker } from '@/components/ColorPicker';
+import { detectRoomPolygon, detectRoomPolygonHinted, preloadCV } from '@/lib/roomDetection';
 
 interface AnnotationCanvasProps {
   docId: string;
@@ -44,7 +45,7 @@ export function AnnotationCanvas({
   docId, page, width, height, pdfScale, onCalibrate,
 }: AnnotationCanvasProps) {
   const {
-    activeTool, setActiveTool, openDocuments, addAnnotation, addAnnotations, updateAnnotation,
+    activeTool, setActiveTool, setZoom, openDocuments, addAnnotation, addAnnotations, updateAnnotation,
     deleteAnnotation, selectAnnotation, selectAnnotations, deleteSelectedAnnotation, activeColor, activeFillColor, setActiveFillColor, strokeWidth, ocrTransparencyEnabled,
     ocrFontSize, ocrTextColor, ocrBgColor,
   } = useAppStore();
@@ -64,6 +65,9 @@ export function AnnotationCanvas({
   } | null>(null);
   const dragRef = useRef<{ id: string, type: 'rect' | 'point' | 'area-point' | 'dist-point', startPt?: Point, originalRect?: any, pointIndex?: number } | null>(null);
   const selectionRect = useRef<{ start: Point; end: Point } | null>(null);
+  const zoomRect = useRef<{ start: Point; end: Point } | null>(null);
+  const sprayPoints = useRef<Point[]>([]);
+  const roughPoints = useRef<Point[]>([]);
   const lassoPoints = useRef<Point[]>([]);
   const [contextMenu, setContextMenu] = useState<{ annId: string; x: number; y: number } | null>(null);
   const { setHoveredPoint } = useAppStore();
@@ -1370,7 +1374,8 @@ export function AnnotationCanvas({
   // ─── Pointer event handling ───
   const isAnnotateTool = [
     'highlight', 'freehand', 'callout', 'text',
-    'measure-distance', 'measure-area', 'measure-circle', 'measure-calibrate',
+    'measure-distance', 'measure-area', 'measure-circle', 'measure-magic-area', 'measure-calibrate',
+    'zoom-area', 'measure-spray-area', 'measure-rough-area',
     'direct-edit', 'ocr-select',
     'rect-shape', 'circle-shape', 'line-shape', 'arrow-shape', 'double-arrow-shape',
     'arrow-dashed', 'arrow-filled', 'arrow-measurement',
@@ -1384,9 +1389,16 @@ export function AnnotationCanvas({
     if (activeTool === 'cursor-lasso') return 'crosshair';
     if (activeTool === 'eraser') return 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'black\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.9-9.9c1-1 2.5-1 3.4 0l4.3 4.3c1 1 1 2.5 0 3.4l-9.9 9.9c-1 1-2.5 1-3.4 0Z\'/%3E%3Cpath d=\'M22 21H7\'/%3E%3Cpath d=\'m5 11 9 9\'/%3E%3C/svg%3E") 0 24, auto';
     if (activeTool === 'fill-tool') return 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'black\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'m19 11-8-8-8.6 8.6c-1 1-1 2.4 0 3.4l5 5c1 1 2.4 1 3.4 0L19 11Z\'/%3E%3Cpath d=\'m5 21.5 1.7-1.7\'/%3E%3Cpath d=\'M1.3 17.7 3 16\'/%3E%3Cpath d=\'M19.7 11c1.3-1.3 4-3 5-2g-1.5 3c-1 1-2.7 3.5-4 4.8\'/%3E%3Cpath d=\'m5 11 9 9\'/%3E%3C/svg%3E") 0 24, auto';
+    if (activeTool === 'measure-magic-area') return 'crosshair';
+    if (activeTool === 'zoom-area') return 'crosshair';
+    if (activeTool === 'measure-spray-area') return 'none'; // SVG circle IS the cursor
+    if (activeTool === 'measure-rough-area') return 'crosshair';
     if (isAnnotateTool) return 'crosshair';
     return 'inherit';
   };
+
+  // Warm up OpenCV.js WASM on mount so first click is instant
+  useEffect(() => { preloadCV(); }, []);
 
   const onPointerDown = useCallback((e: any) => {
     const svg = svgRef.current!;
@@ -1416,6 +1428,27 @@ export function AnnotationCanvas({
       return;
     }
 
+    if (activeTool === 'zoom-area') {
+      (svg as SVGSVGElement).setPointerCapture(e.pointerId);
+      zoomRect.current = { start: normPt, end: normPt };
+      rerender();
+      return;
+    }
+
+    if (activeTool === 'measure-spray-area') {
+      (svg as SVGSVGElement).setPointerCapture(e.pointerId);
+      sprayPoints.current = [normPt]; // start the brush path
+      rerender();
+      return;
+    }
+
+    if (activeTool === 'measure-rough-area') {
+      (svg as SVGSVGElement).setPointerCapture(e.pointerId);
+      roughPoints.current = [normPt];
+      rerender();
+      return;
+    }
+
     if (activeTool === 'direct-edit') {
       const clickedEl = (e.target as Element)?.closest('[data-ann-id]');
       if (!clickedEl) {
@@ -1442,6 +1475,69 @@ export function AnnotationCanvas({
         const annId = clickedEl.getAttribute('data-ann-id');
         if (annId) deleteAnnotation(docId, page, annId);
       }
+      return;
+    }
+
+    if (activeTool === 'measure-magic-area') {
+      const container = svg.closest('.pdf-page-container');
+      const pdfCanvas = container?.querySelector('canvas') as HTMLCanvasElement;
+      if (!pdfCanvas) {
+        alert('Fehler: PDF-Seite konnte für die Raumerkennung nicht gelesen werden.');
+        return;
+      }
+
+      const normPageW = width / pdfScale;
+      const normPageH = height / pdfScale;
+
+      // Run OpenCV detection asynchronously
+      // Show wait cursor while processing
+      const svgEl = svg as SVGSVGElement;
+      svgEl.style.cursor = 'wait';
+
+      // Capture the click point and scale info for the async context
+      const clickNormPt = { ...normPt };
+      const clickDocId = docId;
+      const clickPage = page;
+
+      detectRoomPolygon(pdfCanvas, clickNormPt, normPageW, normPageH, {
+        rdpEpsilon: 3,
+      }).then((res) => {
+        svgEl.style.cursor = '';
+
+        if (res && res.points.length >= 3) {
+          const scale = doc?.scale ?? { pixelsPerUnit: 1, unit: 'px' };
+          const realArea = res.areaPx / (scale.pixelsPerUnit ** 2);
+          const newId = uuidv4();
+
+          addAnnotation(clickDocId, clickPage, {
+            id: newId,
+            type: 'measure-area',
+            page: clickPage,
+            color: '#1a73e8',
+            fillColor: activeFillColor !== 'transparent' ? activeFillColor : '#1a73e8',
+            opacity: 1,
+            createdAt: Date.now(),
+            points: res.points,
+            displayValue: realArea.toFixed(2),
+            unit: scale.unit,
+          } as MeasureAreaAnnotation);
+
+          selectAnnotation(clickDocId, clickPage, newId);
+          rerender();
+        } else {
+          alert(
+            'Auto-Raum: Kein geschlossener Raum gefunden.\n\n' +
+            'Tipps:\n' +
+            '• In die Mitte des Raumes klicken (nicht auf Text oder Linie)\n' +
+            '• Zoom etwas erhöhen und erneut versuchen'
+          );
+        }
+      }).catch((err) => {
+        svgEl.style.cursor = '';
+        console.error('Auto-Raum Fehler:', err);
+        alert('Auto-Raum: Fehler bei der OpenCV-Verarbeitung. Bitte erneut versuchen.');
+      });
+
       return;
     }
 
@@ -1529,6 +1625,35 @@ export function AnnotationCanvas({
       return;
     }
 
+    if (activeTool === 'zoom-area' && zoomRect.current) {
+      zoomRect.current.end = normPt;
+      rerender();
+      return;
+    }
+
+    if (activeTool === 'measure-spray-area') {
+      rerender(); // always rerender so cursor circle moves
+      if (e.buttons === 1 && sprayPoints.current.length > 0) {
+        // Collect smooth path points (min 3px apart in page coords)
+        const last = sprayPoints.current[sprayPoints.current.length - 1];
+        const minDist = 3 / zoom;
+        if (Math.hypot(normPt.x - last.x, normPt.y - last.y) >= minDist) {
+          sprayPoints.current.push(normPt);
+        }
+      }
+      return;
+    }
+
+    if (activeTool === 'measure-rough-area' && e.buttons === 1 && roughPoints.current.length > 0) {
+      const last = roughPoints.current[roughPoints.current.length - 1];
+      const dx = normPt.x - last.x, dy = normPt.y - last.y;
+      if (dx * dx + dy * dy > 9) {
+        roughPoints.current.push(normPt);
+        rerender();
+      }
+      return;
+    }
+
     if (activeTool === 'cursor' && selectionRect.current) {
       selectionRect.current.end = normPt;
       rerender();
@@ -1559,6 +1684,144 @@ export function AnnotationCanvas({
   }, [activeTool, doc, docId, page, annotations, deleteAnnotation, updateAnnotation, rerender]);
 
   const onPointerUp = useCallback((e: any) => {
+    // ─── Spray/Rough hinted room detection ───────────────────────────────────
+    const isHintTool = activeTool === 'measure-spray-area' || activeTool === 'measure-rough-area';
+    const hintPts = activeTool === 'measure-spray-area' ? sprayPoints.current : roughPoints.current;
+    if (isHintTool && hintPts.length >= 2) {
+      const pts = [...hintPts];
+      sprayPoints.current = [];
+      roughPoints.current = [];
+      (svgRef.current as SVGSVGElement)?.releasePointerCapture(e.pointerId);
+      rerender();
+
+      const container = svgRef.current?.closest('.pdf-page-container');
+      const pdfCanvas = container?.querySelector('canvas') as HTMLCanvasElement | null;
+      if (!pdfCanvas) return;
+
+      const normPageW = width / pdfScale;
+      const normPageH = height / pdfScale;
+      const svgEl = svgRef.current as SVGSVGElement;
+      svgEl.style.cursor = 'wait';
+      const capturedDocId = docId;
+      const capturedPage = page;
+
+      detectRoomPolygonHinted(pdfCanvas, pts, normPageW, normPageH, { rdpEpsilon: 3 })
+        .then((res) => {
+          svgEl.style.cursor = '';
+          if (res && res.points.length >= 3) {
+            const scale = doc?.scale ?? { pixelsPerUnit: 1, unit: 'px' };
+            const realArea = res.areaPx / (scale.pixelsPerUnit ** 2);
+            const newId = uuidv4();
+            addAnnotation(capturedDocId, capturedPage, {
+              id: newId,
+              type: 'measure-area',
+              page: capturedPage,
+              color: '#1a73e8',
+              fillColor: activeFillColor !== 'transparent' ? activeFillColor : '#1a73e8',
+              opacity: 1,
+              createdAt: Date.now(),
+              points: res.points,
+              displayValue: realArea.toFixed(2),
+              unit: scale.unit,
+            } as MeasureAreaAnnotation);
+            selectAnnotation(capturedDocId, capturedPage, newId);
+            rerender();
+          } else {
+            alert(
+              (activeTool === 'measure-spray-area' ? 'Spray-Raum' : 'Grob-Erkennung') +
+              ': Kein Raum gefunden.\n\nTipps:\n• Großzügiger über den Raum ziehen\n• Zoom erhöhen und erneut versuchen'
+            );
+          }
+        })
+        .catch((err) => {
+          svgEl.style.cursor = '';
+          console.error('Hinted-Raum Fehler:', err);
+        });
+      return;
+    }
+    if (isHintTool) {
+      sprayPoints.current = [];
+      roughPoints.current = [];
+      (svgRef.current as SVGSVGElement)?.releasePointerCapture(e.pointerId);
+      rerender();
+      return;
+    }
+
+    if (activeTool === 'zoom-area' && zoomRect.current) {
+      const zr = zoomRect.current;
+      zoomRect.current = null;
+      (svgRef.current as SVGSVGElement)?.releasePointerCapture(e.pointerId);
+      rerender();
+
+      const w = Math.abs(zr.end.x - zr.start.x);
+      const h = Math.abs(zr.end.y - zr.start.y);
+      const minX = Math.min(zr.start.x, zr.end.x);
+      const minY = Math.min(zr.start.y, zr.end.y);
+
+      const currentZoom = doc?.zoom ?? 1.0;
+      const screenW = w * currentZoom;
+      const screenH = h * currentZoom;
+
+      const unscaledPageW = width / currentZoom;
+      const unscaledPageH = height / currentZoom;
+
+      const svg = svgRef.current;
+      const scrollEl = svg?.closest('.canvas-area') || (document.querySelector('.canvas-area') as HTMLElement);
+      const clientW = scrollEl?.clientWidth || window.innerWidth;
+      const clientH = scrollEl?.clientHeight || window.innerHeight;
+
+      const vw = Math.max(150, clientW - 40);
+      const vh = Math.max(150, clientH - 40);
+
+      let targetZoom: number;
+      let centerUnscaledX: number;
+      let centerUnscaledY: number;
+
+      if (screenW < 6 && screenH < 6) {
+        // Single click or tiny drag: zoom in by 1.5x centered on click
+        targetZoom = Math.min(10.0, currentZoom * 1.5);
+        centerUnscaledX = minX;
+        centerUnscaledY = minY;
+      } else {
+        // Marquee box zoom: fit selected region in viewport
+        const zoomW = vw / Math.max(1, w);
+        const zoomH = vh / Math.max(1, h);
+        targetZoom = Math.min(10.0, Math.max(0.1, Math.min(zoomW, zoomH)));
+        centerUnscaledX = minX + w / 2;
+        centerUnscaledY = minY + h / 2;
+      }
+
+      setZoom(docId, Math.round(targetZoom * 100) / 100);
+
+      // Deterministic target scroll calculation
+      const targetPageWidth = unscaledPageW * targetZoom;
+      const targetPageHeight = unscaledPageH * targetZoom;
+
+      const pageLeft = Math.max(20, (clientW - targetPageWidth) / 2);
+      const pageIndex = Math.max(0, (page || 1) - 1);
+      const pageGap = 12;
+      const pageTop = 20 + pageIndex * (targetPageHeight + pageGap);
+
+      const targetScrollLeft = Math.max(0, pageLeft + (centerUnscaledX * targetZoom) - clientW / 2);
+      const targetScrollTop = Math.max(0, pageTop + (centerUnscaledY * targetZoom) - clientH / 2);
+
+      const performScroll = () => {
+        if (scrollEl) {
+          scrollEl.scrollTo({
+            left: targetScrollLeft,
+            top: targetScrollTop,
+            behavior: 'smooth'
+          });
+        }
+      };
+
+      requestAnimationFrame(performScroll);
+      setTimeout(performScroll, 40);
+      setTimeout(performScroll, 120);
+
+      return;
+    }
+
     // Handle marquee selection finish
     if (activeTool === 'cursor' && selectionRect.current) {
       const sr = selectionRect.current;
@@ -1818,6 +2081,122 @@ export function AnnotationCanvas({
         {renderLive()}
         {renderSelectionRect()}
         {renderLassoPolygon()}
+
+        {/* ── Spray-Raum: thick brush stroke preview ── */}
+        {activeTool === 'measure-spray-area' && (() => {
+          const z = doc?.zoom ?? 1.0;
+          const STROKE_W = 28; // thick brush stroke in SVG pixels
+          // Build SVG path from collected points
+          const pathD = sprayPoints.current.length > 1
+            ? sprayPoints.current.map((p, i) =>
+                `${i === 0 ? 'M' : 'L'}${(p.x * z).toFixed(1)},${(p.y * z).toFixed(1)}`
+              ).join(' ')
+            : null;
+          return (
+            <g pointerEvents="none">
+              {/* Thick, semi-transparent stroke – the painted area */}
+              {pathD && (
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke="rgba(255, 140, 0, 0.38)"
+                  strokeWidth={STROKE_W}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              {/* Darker outline so the stroke is clearly visible */}
+              {pathD && (
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke="rgba(200, 80, 0, 0.60)"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              {/* Circular cursor indicator – shows brush size */}
+              {localPointerPos && (
+                <g>
+                  <circle
+                    cx={localPointerPos.x} cy={localPointerPos.y} r={STROKE_W / 2}
+                    fill="rgba(255,100,0,0.06)"
+                    stroke="rgba(255,100,0,0.80)" strokeWidth={1.5}
+                    strokeDasharray="4 3"
+                  />
+                  <line x1={localPointerPos.x - 4} y1={localPointerPos.y}
+                        x2={localPointerPos.x + 4} y2={localPointerPos.y}
+                        stroke="rgba(255,100,0,0.9)" strokeWidth={1.2} />
+                  <line x1={localPointerPos.x} y1={localPointerPos.y - 4}
+                        x2={localPointerPos.x} y2={localPointerPos.y + 4}
+                        stroke="rgba(255,100,0,0.9)" strokeWidth={1.2} />
+                  {sprayPoints.current.length > 3 && (
+                    <g transform={`translate(${localPointerPos.x + STROKE_W / 2 + 6}, ${localPointerPos.y - 9})`}>
+                      <rect x={0} y={0} width={130} height={18} rx={4} fill="#cc5000" opacity={0.92} />
+                      <text x={6} y={13} fill="#fff" fontSize={11} fontWeight={600} fontFamily="system-ui,sans-serif">
+                        🎨 Loslassen → Erkennen
+                      </text>
+                    </g>
+                  )}
+                </g>
+              )}
+            </g>
+          );
+        })()}
+
+        {/* ── Grob-Erkennung: rough outline path preview ── */}
+        {activeTool === 'measure-rough-area' && roughPoints.current.length > 1 && (() => {
+          const z = doc?.zoom ?? 1.0;
+          const d = roughPoints.current.map((p, i) =>
+            `${i === 0 ? 'M' : 'L'}${(p.x * z).toFixed(1)},${(p.y * z).toFixed(1)}`
+          ).join(' ') + ' Z';
+          const cx = roughPoints.current.reduce((s, p) => s + p.x, 0) / roughPoints.current.length * z;
+          const cy = roughPoints.current.reduce((s, p) => s + p.y, 0) / roughPoints.current.length * z;
+          return (
+            <g pointerEvents="none">
+              <path d={d}
+                fill="rgba(234,67,53,0.12)"
+                stroke="#ea4335"
+                strokeWidth={2.5}
+                strokeDasharray="8 4"
+                strokeLinejoin="round"
+              />
+              <g transform={`translate(${cx - 65}, ${cy - 22})`}>
+                <rect x={0} y={0} width={130} height={18} rx={4} fill="#ea4335" opacity={0.9} />
+                <text x={6} y={13} fill="#fff" fontSize={11} fontWeight={600} fontFamily="system-ui,sans-serif">
+                  ✏️ Loslassen → Erkennen
+                </text>
+              </g>
+            </g>
+          );
+        })()}
+        {activeTool === 'zoom-area' && zoomRect.current && (() => {
+          const z = doc?.zoom ?? 1.0;
+          const rx = Math.min(zoomRect.current.start.x, zoomRect.current.end.x) * z;
+          const ry = Math.min(zoomRect.current.start.y, zoomRect.current.end.y) * z;
+          const rw = Math.abs(zoomRect.current.end.x - zoomRect.current.start.x) * z;
+          const rh = Math.abs(zoomRect.current.end.y - zoomRect.current.start.y) * z;
+          return (
+            <g pointerEvents="none">
+              <rect
+                x={rx} y={ry} width={rw} height={rh}
+                fill="rgba(26, 115, 232, 0.18)"
+                stroke="#1a73e8"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+              />
+              {rw > 40 && rh > 20 && (
+                <g transform={`translate(${rx + 6}, ${ry + 18})`}>
+                  <rect x={0} y={-13} width={125} height={18} rx={4} fill="#1a73e8" opacity={0.92} />
+                  <text x={6} y={0} fill="#ffffff" fontSize={11} fontWeight={600} fontFamily="system-ui, sans-serif">
+                    🔍 Bereich zoomen
+                  </text>
+                </g>
+              )}
+            </g>
+          );
+        })()}
       </svg>
       {ocrScanning && ocrArea && (
         <div style={{

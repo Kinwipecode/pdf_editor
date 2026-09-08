@@ -85,15 +85,71 @@ export function useKeyboardShortcuts(activeDocId: string | null) {
           case '=':
           case '+':
             e.preventDefault();
-            if (activeDocId && activeDoc) setZoom(activeDocId, activeDoc.zoom + 0.15);
+            if (activeDocId && activeDoc) setZoom(activeDocId, activeDoc.zoom + 0.25);
             break;
           case '-':
             e.preventDefault();
-            if (activeDocId && activeDoc) setZoom(activeDocId, activeDoc.zoom - 0.15);
+            if (activeDocId && activeDoc) setZoom(activeDocId, activeDoc.zoom - 0.25);
             break;
           case '0':
             e.preventDefault();
+            if (activeDocId) {
+              const canvasArea = document.querySelector('.canvas-area') as HTMLElement;
+              const pageEl = canvasArea?.querySelector('.pdf-page-container') as HTMLElement;
+              if (canvasArea && pageEl && activeDoc) {
+                const unscaledW = pageEl.clientWidth / activeDoc.zoom;
+                const unscaledH = pageEl.clientHeight / activeDoc.zoom;
+                const containerW = Math.max(200, canvasArea.clientWidth - 48);
+                const containerH = Math.max(200, canvasArea.clientHeight - 48);
+                if (unscaledW > 0 && unscaledH > 0) {
+                  const fitZoom = Math.min(containerW / unscaledW, containerH / unscaledH);
+                  setZoom(activeDocId, Math.round(fitZoom * 100) / 100);
+                  canvasArea.scrollLeft = 0;
+                  canvasArea.scrollTop = 0;
+                  break;
+                }
+              }
+              setZoom(activeDocId, 1.0);
+            }
+            break;
+          case '1':
+            e.preventDefault();
             if (activeDocId) setZoom(activeDocId, 1.0);
+            break;
+          case '2':
+            e.preventDefault();
+            if (activeDocId && activeDoc) {
+              const canvasArea = document.querySelector('.canvas-area') as HTMLElement;
+              const pageEl = canvasArea?.querySelector('.pdf-page-container') as HTMLElement;
+              if (canvasArea && pageEl) {
+                const unscaledW = pageEl.clientWidth / activeDoc.zoom;
+                const containerW = Math.max(200, canvasArea.clientWidth - 48);
+                if (unscaledW > 0) {
+                  setZoom(activeDocId, Math.round((containerW / unscaledW) * 100) / 100);
+                  canvasArea.scrollLeft = 0;
+                }
+              }
+            }
+            break;
+        }
+        return;
+      }
+
+      // Single-key shortcuts (when not typing in form field)
+      const isInput = tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target as HTMLElement).isContentEditable;
+      if (!isInput) {
+        switch (e.key.toLowerCase()) {
+          case 'z':
+            e.preventDefault();
+            setActiveTool('zoom-area');
+            break;
+          case 'h':
+            e.preventDefault();
+            setActiveTool('hand');
+            break;
+          case 'v':
+            e.preventDefault();
+            setActiveTool('cursor');
             break;
         }
       }
