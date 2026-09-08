@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 interface ScalePresetDialogProps {
   onConfirm: (pixelsPerUnit: number, unit: string, ratio: number) => void;
   onCancel: () => void;
+  onStartCalibration?: () => void;
   initialRatio?: number;
   initialUnit?: string;
 }
@@ -37,6 +38,7 @@ export function calculateScalePixelsPerUnit(ratio: number, unit: string): number
 export function ScalePresetDialog({
   onConfirm,
   onCancel,
+  onStartCalibration,
   initialRatio = 100,
   initialUnit = 'm',
 }: ScalePresetDialogProps) {
@@ -181,6 +183,38 @@ export function ScalePresetDialog({
             Rechnerisch: {pixelsPerUnit.toFixed(2)} px / {unit} (72 DPI Referenz)
           </div>
         </div>
+
+        {onStartCalibration && (
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancel();
+                onStartCalibration();
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 6,
+                border: '1px solid #4f8ef7',
+                background: 'rgba(79, 142, 247, 0.15)',
+                color: '#4f8ef7',
+                fontWeight: 600,
+                fontSize: 12,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span>📏</span>
+              <span>Strecke auf PDF messen & manuell kalibrieren</span>
+            </button>
+          </div>
+        )}
 
         <div className="modal-actions" style={{ marginTop: 16 }}>
           <button type="button" className="btn-secondary" onClick={(e) => { e.stopPropagation(); onCancel(); }}>Abbrechen</button>

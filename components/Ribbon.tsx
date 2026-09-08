@@ -526,7 +526,6 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
                     : 'MAßSTAB'}
               </span>
             }>
-              <ToolBtn icon={<TbRulerMeasure />} label="Kalibrieren" tool="measure-calibrate" tooltip="Maßstab manuell an einer bekannten Strecke messen und kalibrieren" />
               <ToolBtn
                 icon={<MdCalculate />}
                 label="Maßstab 1:X"
@@ -540,7 +539,9 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
                 onChange={(e) => {
                   const val = e.target.value;
                   if (!doc) return;
-                  if (val === 'dialog') {
+                  if (val === 'calibrate') {
+                    setActiveTool('measure-calibrate');
+                  } else if (val === 'dialog') {
                     setScalePresetModalOpen(true);
                   } else {
                     const ratio = parseFloat(val);
@@ -560,6 +561,7 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
                 <option value="500">1:500</option>
                 <option value="1000">1:1000</option>
                 <option value="dialog">Eigene 1:X...</option>
+                <option value="calibrate">📏 Manuell Kalibrieren...</option>
                 {!['20','50','100','200','500','1000'].includes(String(doc?.scale?.ratio ?? '')) && (
                   <option value="custom">
                     {doc?.scale?.ratio ? `1:${doc.scale.ratio}` : 'Kalibriert'}
@@ -798,6 +800,7 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
             setScalePresetModalOpen(false);
           }}
           onCancel={() => setScalePresetModalOpen(false)}
+          onStartCalibration={() => setActiveTool('measure-calibrate')}
         />
       )}
     </div>
