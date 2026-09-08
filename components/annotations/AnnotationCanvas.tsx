@@ -6,7 +6,7 @@ import type {
   Annotation, Point, ToolType,
   HighlightAnnotation, FreehandAnnotation,
   CalloutAnnotation, TextAnnotation,
-  MeasureDistanceAnnotation, MeasureAreaAnnotation, MeasureCircleAnnotation
+  MeasureDistanceAnnotation, MeasureAreaAnnotation, MeasureCircleAnnotation, MeasureVolumeAnnotation
 } from '@/types';
 import { MdChatBubbleOutline, MdMinimize, MdRefresh, MdDelete, MdContentCopy } from 'react-icons/md';
 import { ColorPicker } from '@/components/ColorPicker';
@@ -232,6 +232,30 @@ export function AnnotationCanvas({
     }
   }, [activeTool, addAnnotation, docId, doc, page, rerender, setActiveTool, selectAnnotation]);
 
+  const finishVolumeMeasurement = useCallback(() => {
+    if (activeTool === 'measure-volume') {
+      const d = drawing.current;
+      if (d?.points && d.points.length >= 3) {
+        // remove the preview point
+        const finalPts = d.points.slice(0, -1);
+        const scale = doc?.scale ?? { pixelsPerUnit: 1, unit: 'px' };
+        const areaPx = polyArea(finalPts);
+        const realArea = areaPx / (scale.pixelsPerUnit ** 2);
+        const defaultH = useAppStore.getState().defaultRoomHeight || 2.50;
+        addAnnotation(docId, page, {
+          id: d.id, type: 'measure-volume', page, color: '#a855f7', opacity: 1,
+          createdAt: Date.now(), points: finalPts,
+          displayValue: realArea.toFixed(2), unit: scale.unit,
+          height: defaultH,
+        } as MeasureVolumeAnnotation);
+        selectAnnotation(docId, page, d.id);
+        drawing.current = null;
+        setActiveTool('hand');
+        rerender();
+      }
+    }
+  }, [activeTool, addAnnotation, docId, doc, page, rerender, setActiveTool, selectAnnotation]);
+
   const finishDistanceMeasurement = useCallback(() => {
     if (activeTool === 'measure-distance') {
       const d = drawing.current;
@@ -261,13 +285,15 @@ export function AnnotationCanvas({
     if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
     if (e.key === 'Enter') {
       finishAreaMeasurement();
+      finishVolumeMeasurement();
       finishDistanceMeasurement();
       return;
     }
     if (e.key === 'Escape') {
       if (drawing.current) {
-        if (activeTool === 'measure-area' && (drawing.current.points?.length || 0) >= 3) {
-          finishAreaMeasurement();
+        if ((activeTool === 'measure-area' || activeTool === 'measure-volume') && (drawing.current.points?.length || 0) >= 3) {
+          if (activeTool === 'measure-volume') finishVolumeMeasurement();
+          else finishAreaMeasurement();
         } else if (activeTool === 'measure-distance' && (drawing.current.points?.length || 0) >= 2) {
           finishDistanceMeasurement();
         } else {
@@ -277,7 +303,7 @@ export function AnnotationCanvas({
       }
       return;
     }
-  }, [activeTool, finishAreaMeasurement, finishDistanceMeasurement, rerender]);
+  }, [activeTool, finishAreaMeasurement, finishVolumeMeasurement, finishDistanceMeasurement, rerender]);
 
   const { magZoom } = useAppStore();
   const [showMagnifier, setShowMagnifier] = useState(false);
@@ -299,7 +325,7 @@ export function AnnotationCanvas({
       }
 
       if (e.key === '+') {
-        if (drawing.current && (activeTool === 'measure-distance' || activeTool === 'measure-area')) {
+        if (drawing.current && (activeTool === 'measure-distance' || activeTool === 'measure-area' || activeTool === 'measure-volume')) {
           const pts = drawing.current.points!;
           const last = pts[pts.length - 1];
           pts.push({ ...last });
@@ -310,7 +336,7 @@ export function AnnotationCanvas({
       if (e.key === 'Delete' || e.key === 'Backspace' || e.key === '-' || e.key === '_') {
         // Point deletion is now handled globally in useKeyboardShortcuts.ts
         // But we still handle "undo" during ACTIVE drawing here
-        if (drawing.current && (activeTool === 'measure-distance' || activeTool === 'measure-area')) {
+        if (drawing.current && (activeTool === 'measure-distance' || activeTool === 'measure-area' || activeTool === 'measure-volume')) {
           if ((drawing.current.points?.length || 0) > 2) {
             drawing.current.points!.splice(-2, 1);
             rerender();
@@ -320,8 +346,9 @@ export function AnnotationCanvas({
       }
       if (e.key === 'Escape') {
         if (drawing.current) {
-          if (activeTool === 'measure-area' && (drawing.current.points?.length || 0) >= 3) {
-            finishAreaMeasurement();
+          if ((activeTool === 'measure-area' || activeTool === 'measure-volume') && (drawing.current.points?.length || 0) >= 3) {
+            if (activeTool === 'measure-volume') finishVolumeMeasurement();
+            else finishAreaMeasurement();
           } else if (activeTool === 'measure-distance' && (drawing.current.points?.length || 0) >= 2) {
             finishDistanceMeasurement();
           } else {
@@ -344,7 +371,7 @@ export function AnnotationCanvas({
       window.removeEventListener('keydown', handleGlobalKeyDown);
       window.removeEventListener('keyup', handleGlobalKeyUp);
     };
-  }, [docId, page, annotations, activeTool, selectAnnotation, setActiveTool, deleteSelectedAnnotation, finishAreaMeasurement, finishDistanceMeasurement, rerender]);
+  }, [docId, page, annotations, activeTool, selectAnnotation, setActiveTool, deleteSelectedAnnotation, finishAreaMeasurement, finishVolumeMeasurement, finishDistanceMeasurement, rerender]);
 
   useEffect(() => {
     const handleClick = (e: PointerEvent) => {
@@ -764,6 +791,110 @@ export function AnnotationCanvas({
               <text x={points.reduce((s, p) => s + p.x, 0) / points.length * pdfScale} y={points.reduce((s, p) => s + p.y, 0) / points.length * pdfScale} textAnchor="middle" className="measure-label" style={{ pointerEvents: 'none' }}>
                 {displayValue} {unit}²
               </text>
+            </g>
+          );
+        }
+
+        case 'measure-volume': {
+          const { points, displayValue, unit, color, id, selected, height } = ann as MeasureVolumeAnnotation;
+          if (points.length < 2) return null;
+          const pstr = points.map((p) => `${p.x * pdfScale},${p.y * pdfScale}`).join(' ');
+          const roomH = height ?? (useAppStore.getState().defaultRoomHeight || 2.50);
+          const areaVal = parseFloat(displayValue) || 0;
+          const volVal = areaVal * roomH;
+          const cx = points.reduce((s, p) => s + p.x, 0) / points.length * pdfScale;
+          const cy = points.reduce((s, p) => s + p.y, 0) / points.length * pdfScale;
+          const mainColor = color || '#a855f7';
+
+          return (
+            <g key={id}>
+              {/* Transparent background for selection */}
+              <polygon points={pstr} fill="transparent" stroke="none"
+                style={{ cursor: activeTool === 'hand' ? 'grab' : 'pointer' }}
+                onPointerDown={(e) => {
+                  if (activeTool === 'eraser') { e.stopPropagation(); deleteAnnotation(docId, page, id); }
+                  else if (activeTool === 'fill-tool') { e.stopPropagation(); updateAnnotation(docId, page, { ...ann, fillColor: activeFillColor } as any); }
+                  else if (['cursor', 'direct-edit', 'hand'].includes(activeTool as string)) { e.stopPropagation(); selectAnnotation(docId, page, id); }
+                }}
+              />
+
+              {/* Clickable segments for point insertion - ONLY when selected */}
+              {selected && points.map((p, i) => {
+                const next = points[(i + 1) % points.length];
+                return (
+                  <line key={`hit-${i}`} x1={p.x * pdfScale} y1={p.y * pdfScale} x2={next.x * pdfScale} y2={next.y * pdfScale}
+                    stroke="transparent" strokeWidth={20}
+                    style={{ cursor: 'copy' }}
+                    onPointerDown={(e) => {
+                      if (['cursor', 'direct-edit', 'hand'].includes(activeTool as string)) {
+                        e.stopPropagation();
+                        const svg = svgRef.current!;
+                        const clickPt = svgPt(e as any, svg);
+                        const normClickPt = { x: clickPt.x / pdfScale, y: clickPt.y / pdfScale };
+                        const newPts = [...points];
+                        newPts.splice(i + 1, 0, normClickPt);
+
+                        const scale = doc?.scale ?? { pixelsPerUnit: 1, unit: 'px' };
+                        const areaPx = polyArea(newPts);
+                        const areaReal = areaPx / (scale.pixelsPerUnit ** 2);
+
+                        updateAnnotation(docId, page, {
+                          ...(ann as any),
+                          points: newPts,
+                          displayValue: areaReal.toFixed(2)
+                        } as any);
+                        selectAnnotation(docId, page, id);
+                      }
+                    }}
+                  />
+                );
+              })}
+
+              <polygon points={pstr} fill={ann.fillColor || mainColor} fillOpacity={ann.fillColor ? 0.6 : 0.2}
+                data-ann-id={id}
+                onContextMenu={(e) => {
+                  e.preventDefault(); e.stopPropagation();
+                  selectAnnotation(docId, page, id);
+                  setContextMenu({ annId: id, x: e.clientX, y: e.clientY });
+                }}
+                stroke={selected ? '#c084fc' : mainColor} strokeWidth={selected ? 3 : 2} strokeDasharray="6 3" pointerEvents="none" />
+
+              {points.map((p, i) => (
+                <circle key={i} cx={p.x * pdfScale} cy={p.y * pdfScale} r={selected ? 5 : 3} fill={selected ? '#fff' : mainColor}
+                  stroke={selected ? '#c084fc' : 'none'} strokeWidth={selected ? 2 : 0}
+                  style={{ cursor: selected ? 'move' : 'pointer' }}
+                  onPointerEnter={() => selected && setHoveredPoint({ docId, page, annId: id, index: i })}
+                  onPointerLeave={() => setHoveredPoint(null)}
+                  onMouseDown={(e: any) => e.stopPropagation()}
+                  onPointerDown={(e: any) => {
+                    e.stopPropagation();
+                    if (e.altKey) {
+                      const newPts = [...points];
+                      if (newPts.length > 2) {
+                        newPts.splice(i, 1);
+                        const scale = doc?.scale ?? { pixelsPerUnit: 1, unit: 'px' };
+                        const areaPx = polyArea(newPts);
+                        updateAnnotation(docId, page, { ...(ann as any), points: newPts, displayValue: (areaPx / (scale.pixelsPerUnit ** 2)).toFixed(2) } as any);
+                      }
+                      return;
+                    }
+                    selectAnnotation(docId, page, id);
+                    const svg = svgRef.current;
+                    if (svg && (activeTool === 'cursor' || activeTool === 'direct-edit' || activeTool === 'hand')) {
+                      (svg as SVGSVGElement).setPointerCapture(e.pointerId);
+                      dragRef.current = { id, type: 'area-point', pointIndex: i };
+                    }
+                  }}
+                />
+              ))}
+              <g pointerEvents="none">
+                <text x={cx} y={cy - 6} textAnchor="middle" className="measure-label" style={{ fill: '#e9d5ff', fontWeight: 600, fontSize: 11 }}>
+                  {displayValue} {unit}² (h={roomH.toFixed(2)}m)
+                </text>
+                <text x={cx} y={cy + 10} textAnchor="middle" className="measure-label" style={{ fill: '#c084fc', fontWeight: 'bold', fontSize: 13 }}>
+                  {volVal.toFixed(2)} {unit}³
+                </text>
+              </g>
             </g>
           );
         }
@@ -1327,22 +1458,24 @@ export function AnnotationCanvas({
         </g>
       );
     }
-    if (d.type === 'measure-area' && p.length > 0) {
+    if ((d.type === 'measure-area' || d.type === 'measure-volume') && p.length > 0) {
       const pstr = p.map((pt) => `${pt.x},${pt.y}`).join(' ');
+      const strokeColor = d.type === 'measure-volume' ? '#a855f7' : '#1a73e8';
+      const fillColor = d.type === 'measure-volume' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(26, 115, 232, 0.15)';
       return (
         <g>
-          <polygon points={pstr} fill="rgba(26, 115, 232, 0.15)" stroke="#1a73e8" strokeWidth={2} strokeDasharray="5 3" />
+          <polygon points={pstr} fill={fillColor} stroke={strokeColor} strokeWidth={2} strokeDasharray="5 3" />
           {p.map((pt, i) => {
             const isLast = i === p.length - 1;
             if (isLast) {
               return (
                 <g key={i}>
-                  <line x1={pt.x - 10} y1={pt.y} x2={pt.x + 10} y2={pt.y} stroke="#1a73e8" strokeWidth={1} />
-                  <line x1={pt.x} y1={pt.y - 10} x2={pt.x} y2={pt.y + 10} stroke="#1a73e8" strokeWidth={1} />
+                  <line x1={pt.x - 10} y1={pt.y} x2={pt.x + 10} y2={pt.y} stroke={strokeColor} strokeWidth={1} />
+                  <line x1={pt.x} y1={pt.y - 10} x2={pt.x} y2={pt.y + 10} stroke={strokeColor} strokeWidth={1} />
                 </g>
               );
             }
-            return <circle key={i} cx={pt.x} cy={pt.y} r={3} fill="#1a73e8" />;
+            return <circle key={i} cx={pt.x} cy={pt.y} r={3} fill={strokeColor} />;
           })}
         </g>
       );
@@ -1374,7 +1507,7 @@ export function AnnotationCanvas({
   // ─── Pointer event handling ───
   const isAnnotateTool = [
     'highlight', 'freehand', 'callout', 'text',
-    'measure-distance', 'measure-area', 'measure-circle', 'measure-magic-area', 'measure-calibrate',
+    'measure-distance', 'measure-area', 'measure-circle', 'measure-volume', 'measure-magic-area', 'measure-calibrate',
     'zoom-area', 'measure-spray-area', 'measure-rough-area',
     'direct-edit', 'ocr-select',
     'rect-shape', 'circle-shape', 'line-shape', 'arrow-shape', 'double-arrow-shape',
@@ -1541,7 +1674,7 @@ export function AnnotationCanvas({
       return;
     }
 
-    if (activeTool === 'measure-distance' || activeTool === 'measure-area' || activeTool === 'measure-circle') {
+    if (activeTool === 'measure-distance' || activeTool === 'measure-area' || activeTool === 'measure-circle' || activeTool === 'measure-volume') {
       if (!drawing.current) {
         (svg as SVGSVGElement).setPointerCapture(e.pointerId);
         drawing.current = { id: uuidv4(), type: activeTool, points: [normPt, normPt], start: normPt, end: normPt };
@@ -1603,7 +1736,7 @@ export function AnnotationCanvas({
         } as MeasureDistanceAnnotation);
       }
 
-      if (ann && type === 'area-point' && ann.type === 'measure-area' && pointIndex !== undefined) {
+      if (ann && type === 'area-point' && (ann.type === 'measure-area' || ann.type === 'measure-volume') && pointIndex !== undefined) {
         const newPts = [...ann.points];
         newPts[pointIndex] = normPt;
         const scale = doc?.scale ?? { pixelsPerUnit: 1, unit: 'px' };
@@ -1613,12 +1746,12 @@ export function AnnotationCanvas({
           ...ann,
           points: newPts,
           displayValue: areaReal.toFixed(2)
-        } as MeasureAreaAnnotation);
+        } as any);
       }
       return;
     }
 
-    if (drawing.current && (activeTool === 'measure-distance' || activeTool === 'measure-area')) {
+    if (drawing.current && (activeTool === 'measure-distance' || activeTool === 'measure-area' || activeTool === 'measure-volume')) {
       const pts = drawing.current.points!;
       pts[pts.length - 1] = normPt;
       rerender();
@@ -2039,19 +2172,21 @@ export function AnnotationCanvas({
 
   const onDoubleClick = useCallback(() => {
     finishAreaMeasurement();
+    finishVolumeMeasurement();
     finishDistanceMeasurement();
-  }, [finishAreaMeasurement, finishDistanceMeasurement]);
+  }, [finishAreaMeasurement, finishVolumeMeasurement, finishDistanceMeasurement]);
 
   const onContextMenu = useCallback((e: React.MouseEvent) => {
     const d = drawing.current;
-    if (activeTool === 'measure-area' && d?.points && d.points.length >= 3) {
+    if ((activeTool === 'measure-area' || activeTool === 'measure-volume') && d?.points && d.points.length >= 3) {
       e.preventDefault();
-      finishAreaMeasurement();
+      if (activeTool === 'measure-volume') finishVolumeMeasurement();
+      else finishAreaMeasurement();
     } else if (activeTool === 'measure-distance' && d?.points && d.points.length >= 2) {
       e.preventDefault();
       finishDistanceMeasurement();
     }
-  }, [activeTool, finishAreaMeasurement, finishDistanceMeasurement]);
+  }, [activeTool, finishAreaMeasurement, finishVolumeMeasurement, finishDistanceMeasurement]);
 
   return (
     <div

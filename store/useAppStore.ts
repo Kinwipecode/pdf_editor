@@ -39,6 +39,13 @@ interface AppState {
   toggleDistCalculator: () => void;
   setDistCalculatorColCount: (count: number) => void;
   setDistCalculatorOpen: (open: boolean) => void;
+  volCalculatorOpen: boolean;
+  volCalculatorColCount: number;
+  toggleVolCalculator: () => void;
+  setVolCalculatorColCount: (count: number) => void;
+  setVolCalculatorOpen: (open: boolean) => void;
+  defaultRoomHeight: number;
+  setDefaultRoomHeight: (h: number) => void;
   magZoom: number;
   setMagZoom: (zoom: number) => void;
 
@@ -111,6 +118,13 @@ export const useAppStore = create<AppState>()(
     toggleDistCalculator: () => set((state) => { state.distCalculatorOpen = !state.distCalculatorOpen; }),
     setDistCalculatorColCount: (count) => set((state) => { state.distCalculatorColCount = count; }),
     setDistCalculatorOpen: (open) => set((state) => { state.distCalculatorOpen = open; }),
+    volCalculatorOpen: false,
+    volCalculatorColCount: 1,
+    toggleVolCalculator: () => set((state) => { state.volCalculatorOpen = !state.volCalculatorOpen; }),
+    setVolCalculatorColCount: (count) => set((state) => { state.volCalculatorColCount = count; }),
+    setVolCalculatorOpen: (open) => set((state) => { state.volCalculatorOpen = open; }),
+    defaultRoomHeight: 2.50,
+    setDefaultRoomHeight: (h) => set((state) => { state.defaultRoomHeight = Math.max(0.1, h); }),
     magZoom: 2,
     setMagZoom: (zoom) => set((state) => { state.magZoom = Math.max(1, Math.min(20, zoom)); }),
 

@@ -109,6 +109,25 @@ function KropfPanelInternal() {
 
     return (
         <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+                e.preventDefault();
+                const dataStr = e.dataTransfer.getData('application/json');
+                if (!dataStr) return;
+                try {
+                    const data = JSON.parse(dataStr);
+                    if (data.annId && data.from === 'vol') {
+                        const pageAnns = activeDoc.annotations[data.page] || [];
+                        const ann = pageAnns.find((a) => a.id === data.annId);
+                        if (ann) {
+                            updateAnnotation(activeDoc.id, data.page, {
+                                ...ann,
+                                type: 'measure-area'
+                            } as any);
+                        }
+                    }
+                } catch (err) {}
+            }}
             style={{
                 position: 'fixed',
                 left: pos.x,
@@ -245,13 +264,22 @@ function KropfPanelInternal() {
                         {results.map(({ ann, base, paddedCalcs, finalResult }) => (
                             <tr
                                 key={ann.id}
+                                draggable
+                                onDragStart={(e) => {
+                                    e.dataTransfer.setData('application/json', JSON.stringify({
+                                        annId: ann.id,
+                                        page: ann.page,
+                                        from: 'area'
+                                    }));
+                                }}
                                 onClick={() => selectAnnotation(activeDoc.id, ann.page, ann.id)}
                                 style={{
                                     borderBottom: '1px solid #32333b',
                                     transition: 'background 0.1s',
                                     backgroundColor: ann.selected ? 'rgba(79, 142, 247, 0.15)' : 'transparent',
-                                    cursor: 'pointer'
+                                    cursor: 'grab'
                                 }}
+                                title="Ziehen zum Verschieben ins Volumen-Fenster"
                             >
                                 <td style={{ padding: '8px 4px', textAlign: 'center' }}>
                                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: ann.color, margin: '0 auto' }} />

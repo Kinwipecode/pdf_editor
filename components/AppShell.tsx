@@ -10,6 +10,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { KropfPanel } from '@/components/KropfPanel';
 import { LinesCalcPanel } from '@/components/LinesCalcPanel';
+import { VolCalcPanel } from '@/components/VolCalcPanel';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
 export function AppShell() {
@@ -114,6 +115,7 @@ export function AppShell() {
       {/* ── Kropf Calculator Panels ── */}
       <KropfPanel />
       <LinesCalcPanel />
+      <VolCalcPanel />
 
       {/* Hidden file input */}
       <input

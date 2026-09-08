@@ -11,7 +11,7 @@ import {
   MdArrowRightAlt, MdStraight, MdFolderOpen, MdSave, MdPrint,
   MdTrendingUp, MdShortcut, MdArrowRight, MdCalculate, MdFunctions,
   MdAddBox, MdDeleteSweep, MdArrowUpward, MdArrowDownward, MdContentCopy,
-  MdDocumentScanner, MdAutoFixHigh, MdAspectRatio, MdCenterFocusStrong
+  MdDocumentScanner, MdAutoFixHigh, MdAspectRatio, MdCenterFocusStrong, MdViewInAr
 } from 'react-icons/md';
 import { BsVectorPen } from 'react-icons/bs';
 import { BiEraser } from 'react-icons/bi';
@@ -21,7 +21,7 @@ import type { ToolType } from '@/types';
 import { ColorPicker } from './ColorPicker';
 import { downloadPdfWithAnnotations } from '@/lib/pdfExport';
 import { ScalePresetDialog, calculateScalePixelsPerUnit } from './measure/ScalePresetDialog';
-import { openAreaPopoutWindow, closeAreaPopoutWindow, openDistPopoutWindow, closeDistPopoutWindow } from '@/lib/popoutManager';
+import { openAreaPopoutWindow, closeAreaPopoutWindow, openDistPopoutWindow, closeDistPopoutWindow, openVolPopoutWindow, closeVolPopoutWindow } from '@/lib/popoutManager';
 
 
 const RIBBON_TABS = ['Start', 'Ansicht', 'Bearbeiten', 'Zeichnen', 'Messen', 'Seiten'] as const;
@@ -164,7 +164,8 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
     activeFillColor, setActiveFillColor, setScale,
     deleteSelectedAnnotation, deleteAnnotation, addAnnotations, toggleOcrTransparency,
     ocrTransparencyEnabled, setOcrTransparency, calculatorOpen, toggleCalculator,
-    distCalculatorOpen, toggleDistCalculator, activeDocumentId,
+    distCalculatorOpen, toggleDistCalculator, setCalculatorOpen, setDistCalculatorOpen,
+    volCalculatorOpen, toggleVolCalculator, setVolCalculatorOpen, activeDocumentId,
     magZoom, setMagZoom,
     deletePage, insertPage, movePage, movePageRelative, movePageRange,
     ocrFontSize, setOcrFontSize,
@@ -513,6 +514,7 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
             <RibbonGroup label="Messen">
               <ToolBtn icon={<MdTimeline />} label="Abstand" tool="measure-distance" tooltip="Abstand messen" />
               <ToolBtn icon={<MdOutlineSquare />} label="Fläche" tool="measure-area" tooltip="Fläche messen" />
+              <ToolBtn icon={<MdViewInAr />} label="Volumen" tool="measure-volume" tooltip="Volumen messen (Grundfläche zeichnen + lichte Raumhöhe eingeben)" />
               <ToolBtn icon={<MdAutoFixHigh />} label="Auto-Raum" tool="measure-magic-area" tooltip="Automatische Raumerkennung — Klick in einen Raum" />
               <ToolBtn icon={<MdOutlineCircle />} label="Kreis-Fläche" tool="measure-circle" tooltip="Kreisfläche messen (über Diagonale)" />
               <ToolBtn icon={<MdZoomIn />} label="Bereich zoomen" tool="zoom-area" tooltip="Ausschnitt vergrößern — Rechteckigen Bereich mit der Maus aufziehen" />
@@ -621,6 +623,21 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
                   }
                 }}
                 tooltip="Messergebnisse auswerten (Längen-Fenster als eigenständiges Pop-up auf 2. Bildschirm)"
+              />
+              <ToolBtn
+                icon={<MdFunctions />}
+                label="Volumen"
+                active={volCalculatorOpen}
+                onClick={() => {
+                  if (volCalculatorOpen) {
+                    closeVolPopoutWindow();
+                    setVolCalculatorOpen(false);
+                  } else {
+                    openVolPopoutWindow();
+                    setVolCalculatorOpen(true);
+                  }
+                }}
+                tooltip="Messergebnisse auswerten (Volumen-Fenster als eigenständiges Pop-up auf 2. Bildschirm)"
               />
             </RibbonGroup>
             <RibbonGroup label="Aktionen">

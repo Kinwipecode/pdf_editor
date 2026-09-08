@@ -12,6 +12,7 @@ export type ToolType =
   | 'measure-distance'
   | 'measure-area'
   | 'measure-circle'
+  | 'measure-volume'
   | 'measure-magic-area'
   | 'measure-spray-area'
   | 'measure-rough-area'
@@ -44,6 +45,7 @@ export type AnnotationType =
   | 'measure-distance'
   | 'measure-area'
   | 'measure-circle'
+  | 'measure-volume'
   | 'rect-shape'
   | 'circle-shape'
   | 'line-shape'
@@ -138,6 +140,16 @@ export interface MeasureCircleAnnotation extends BaseAnnotation {
   isNegative?: boolean;
 }
 
+export interface MeasureVolumeAnnotation extends BaseAnnotation {
+  type: 'measure-volume';
+  points: Point[];
+  displayValue: string;
+  unit: string;
+  height?: number; // Lichte Raumhöhe (default 2.50m)
+  calculations?: string[];
+  isNegative?: boolean;
+}
+
 export interface ShapeAnnotation extends BaseAnnotation {
   type:
   | 'rect-shape'
@@ -172,6 +184,7 @@ export type Annotation =
   | MeasureDistanceAnnotation
   | MeasureAreaAnnotation
   | MeasureCircleAnnotation
+  | MeasureVolumeAnnotation
   | ShapeAnnotation;
 
 // ──────────────────────────────────────────────
