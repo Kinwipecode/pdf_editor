@@ -1,8 +1,9 @@
 'use client';
 import { useAppStore, useActiveDocument } from '@/store/useAppStore';
-import { MdClose, MdAdd, MdRemove, MdDelete } from 'react-icons/md';
+import { MdClose, MdAdd, MdRemove, MdDelete, MdOpenInNew, MdCallReceived } from 'react-icons/md';
 import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
 import type { MeasureAreaAnnotation, MeasureCircleAnnotation } from '@/types';
+import { PopoutWindow } from './PopoutWindow';
 
 function KropfPanelInternal() {
     const {
@@ -12,6 +13,7 @@ function KropfPanelInternal() {
     const activeDoc = useActiveDocument();
 
     const [isDragging, setIsDragging] = useState(false);
+    const [isPopout, setIsPopout] = useState(false);
     const [pos, setPos] = useState({ x: 100, y: 150 });
     const dragStart = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
 
@@ -32,19 +34,21 @@ function KropfPanelInternal() {
     if (!calculatorOpen || !activeDoc) return null;
 
     const handleDragDown = (e: React.PointerEvent) => {
+        if (isPopout) return;
         setIsDragging(true);
         dragStart.current = { x: e.clientX, y: e.clientY, startX: pos.x, startY: pos.y };
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     };
 
     const handleDragMove = (e: React.PointerEvent) => {
-        if (!isDragging) return;
+        if (!isDragging || isPopout) return;
         const dx = e.clientX - dragStart.current.x;
         const dy = e.clientY - dragStart.current.y;
         setPos({ x: dragStart.current.startX + dx, y: dragStart.current.startY + dy });
     };
 
     const handleDragUp = (e: React.PointerEvent) => {
+        if (isPopout) return;
         setIsDragging(false);
         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     };
@@ -91,99 +95,137 @@ function KropfPanelInternal() {
     };
 
     return (
-        <div
-            style={{
-                position: 'fixed',
-                left: pos.x,
-                top: pos.y,
-                width: 'fit-content',
-                minWidth: '400px',
-                maxWidth: '95vw',
-                maxHeight: '80vh',
-                backgroundColor: '#2a2b30',
-                border: '1px solid #3d3e47',
-                borderRadius: '12px',
-                boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-                display: 'flex',
-                flexDirection: 'column',
-                zIndex: 100000,
-                overflow: 'hidden',
-                color: '#e8eaed'
-            }}
+        <PopoutWindow
+            title="Flächen (∑) – PDF Editor"
+            isOpen={calculatorOpen && !!activeDoc}
+            isPopout={isPopout}
+            onClose={() => setCalculatorOpen(false)}
+            onPopoutClose={() => setIsPopout(false)}
         >
-            {/* Header */}
             <div
-                onPointerDown={handleDragDown}
-                onPointerMove={handleDragMove}
-                onPointerUp={handleDragUp}
-                style={{
-                    padding: '12px 16px',
-                    background: '#1e1f24',
-                    borderBottom: '1px solid #3d3e47',
+                style={isPopout ? {
+                    width: '100vw',
+                    height: '100vh',
+                    backgroundColor: '#2a2b30',
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: isDragging ? 'grabbing' : 'grab',
-                    userSelect: 'none'
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    color: '#e8eaed'
+                } : {
+                    position: 'fixed',
+                    left: pos.x,
+                    top: pos.y,
+                    width: 'fit-content',
+                    minWidth: '400px',
+                    maxWidth: '95vw',
+                    maxHeight: '80vh',
+                    backgroundColor: '#2a2b30',
+                    border: '1px solid #3d3e47',
+                    borderRadius: '12px',
+                    boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    zIndex: 100000,
+                    overflow: 'hidden',
+                    color: '#e8eaed'
                 }}
             >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '14px' }}>Flächen (∑)</span>
-                    <span style={{ fontSize: '11px', color: '#9aa0ac', background: '#3d3e47', padding: '2px 6px', borderRadius: '4px' }}>
-                        {areaAnnotations.length} Flächen
-                    </span>
+                {/* Header */}
+                <div
+                    onPointerDown={handleDragDown}
+                    onPointerMove={handleDragMove}
+                    onPointerUp={handleDragUp}
+                    style={{
+                        padding: '12px 16px',
+                        background: '#1e1f24',
+                        borderBottom: '1px solid #3d3e47',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: isPopout ? 'default' : (isDragging ? 'grabbing' : 'grab'),
+                        userSelect: 'none'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 600, fontSize: '14px' }}>Flächen (∑)</span>
+                        <span style={{ fontSize: '11px', color: '#9aa0ac', background: '#3d3e47', padding: '2px 6px', borderRadius: '4px' }}>
+                            {areaAnnotations.length} Flächen
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => {
+                                if (confirm("Alle Flächenmessungen in diesem Dokument löschen?")) {
+                                    areaAnnotations.forEach(ann => deleteAnnotation(activeDoc.id, ann.page, ann.id));
+                                }
+                            }}
+                            style={{
+                                background: 'transparent', border: 'none', cursor: 'pointer', color: '#9aa0ac',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}
+                            title="Alle Flächen löschen"
+                        >
+                            <MdDelete size={18} />
+                        </button>
+                        <div style={{ width: '1px', height: '16px', background: '#3d3e47', margin: '0 4px' }} />
+                        <button
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => setCalculatorColCount(Math.max(1, calculatorColCount - 1))}
+                            style={{
+                                background: '#3d3e47', border: 'none', borderRadius: '4px', width: '24px', height: '24px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff'
+                            }}
+                            title="Spalte entfernen"
+                        >
+                            <MdRemove size={16} />
+                        </button>
+                        <button
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => setCalculatorColCount(calculatorColCount + 1)}
+                            style={{
+                                background: '#3d3e47', border: 'none', borderRadius: '4px', width: '24px', height: '24px',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff'
+                            }}
+                            title="Spalte hinzufügen"
+                        >
+                            <MdAdd size={16} />
+                        </button>
+                        <div style={{ width: '1px', height: '16px', background: '#3d3e47', margin: '0 4px' }} />
+                        <button
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => setIsPopout(!isPopout)}
+                            style={{
+                                background: isPopout ? '#0078d7' : 'transparent',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '3px 6px',
+                                cursor: 'pointer',
+                                color: isPopout ? '#fff' : '#9aa0ac',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                fontSize: '11px',
+                                fontWeight: 500
+                            }}
+                            title={isPopout ? "Wieder im Hauptfenster andocken" : "In eigenem App-Fenster (2. Bildschirm) öffnen"}
+                        >
+                            {isPopout ? <MdCallReceived size={16} /> : <MdOpenInNew size={16} />}
+                            <span>{isPopout ? 'Andocken' : 'Pop-out'}</span>
+                        </button>
+                        <div style={{ width: '1px', height: '16px', background: '#3d3e47', margin: '0 4px' }} />
+                        <button
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => setCalculatorOpen(false)}
+                            style={{
+                                background: 'transparent', border: 'none', cursor: 'pointer', color: '#9aa0ac'
+                            }}
+                        >
+                            <MdClose size={20} />
+                        </button>
+                    </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={() => {
-                            if (confirm("Alle Flächenmessungen in diesem Dokument löschen?")) {
-                                areaAnnotations.forEach(ann => deleteAnnotation(activeDoc.id, ann.page, ann.id));
-                            }
-                        }}
-                        style={{
-                            background: 'transparent', border: 'none', cursor: 'pointer', color: '#9aa0ac',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }}
-                        title="Alle Flächen löschen"
-                    >
-                        <MdDelete size={18} />
-                    </button>
-                    <div style={{ width: '1px', height: '16px', background: '#3d3e47', margin: '0 4px' }} />
-                    <button
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={() => setCalculatorColCount(Math.max(1, calculatorColCount - 1))}
-                        style={{
-                            background: '#3d3e47', border: 'none', borderRadius: '4px', width: '24px', height: '24px',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff'
-                        }}
-                        title="Spalte entfernen"
-                    >
-                        <MdRemove size={16} />
-                    </button>
-                    <button
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={() => setCalculatorColCount(calculatorColCount + 1)}
-                        style={{
-                            background: '#3d3e47', border: 'none', borderRadius: '4px', width: '24px', height: '24px',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff'
-                        }}
-                        title="Spalte hinzufügen"
-                    >
-                        <MdAdd size={16} />
-                    </button>
-                    <div style={{ width: '1px', height: '16px', background: '#3d3e47', margin: '0 4px' }} />
-                    <button
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={() => setCalculatorOpen(false)}
-                        style={{
-                            background: 'transparent', border: 'none', cursor: 'pointer', color: '#9aa0ac'
-                        }}
-                    >
-                        <MdClose size={20} />
-                    </button>
-                </div>
-            </div>
 
             {/* Table Content */}
             <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
@@ -293,6 +335,7 @@ function KropfPanelInternal() {
                 Tipp: Geben Sie Operationen wie 'x2', '+10', '-5' oder ':2' in die Felder ein.
             </div>
         </div>
+        </PopoutWindow>
     );
 }
 
