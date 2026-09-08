@@ -20,14 +20,14 @@ function VolCalcPanelInternal() {
     const popWin = getVolPopoutWindow();
     const activeIsPopout = isPopout && !!popWin && !popWin.closed;
 
-    // Collect ALL surface annotations (volume, area, circle) so drawn areas automatically appear
+    // Collect ONLY volume annotations so window remains independent from Flächen window
     const surfaceAnnotations = useMemo(() => {
         if (!activeDoc) return [];
-        const all: (MeasureVolumeAnnotation | MeasureAreaAnnotation | MeasureCircleAnnotation)[] = [];
+        const all: MeasureVolumeAnnotation[] = [];
         Object.values(activeDoc.annotations).forEach((pageAnns) => {
             pageAnns.forEach((ann) => {
-                if (ann.type === 'measure-volume' || ann.type === 'measure-area' || ann.type === 'measure-circle') {
-                    all.push(ann as any);
+                if (ann.type === 'measure-volume') {
+                    all.push(ann as MeasureVolumeAnnotation);
                 }
             });
         });

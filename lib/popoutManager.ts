@@ -46,8 +46,10 @@ export function openAreaPopoutWindow(): Window | null {
 
   const width = 780;
   const height = 580;
-  const left = window.screen.width ? Math.max(50, Math.round((window.screen.width - width) / 2)) : 100;
-  const top = window.screen.height ? Math.max(50, Math.round((window.screen.height - height) / 2)) : 100;
+  const screenW = typeof window !== 'undefined' ? (window.screen.availWidth || window.screen.width || 1280) : 1280;
+  const screenH = typeof window !== 'undefined' ? (window.screen.availHeight || window.screen.height || 800) : 800;
+  const left = Math.max(20, Math.round((screenW - width) / 2) - 200);
+  const top = Math.max(20, Math.round((screenH - height) / 2) - 30);
 
   const win = window.open(
     '',
@@ -429,8 +431,10 @@ export function openDistPopoutWindow(): Window | null {
 
   const width = 780;
   const height = 580;
-  const left = window.screen.width ? Math.max(50, Math.round((window.screen.width - width) / 2)) : 100;
-  const top = window.screen.height ? Math.max(50, Math.round((window.screen.height - height) / 2)) : 100;
+  const screenW = typeof window !== 'undefined' ? (window.screen.availWidth || window.screen.width || 1280) : 1280;
+  const screenH = typeof window !== 'undefined' ? (window.screen.availHeight || window.screen.height || 800) : 800;
+  const left = Math.max(20, Math.round((screenW - width) / 2));
+  const top = Math.max(20, Math.round((screenH - height) / 2));
 
   const win = window.open(
     '',
@@ -768,8 +772,10 @@ export function openVolPopoutWindow(): Window | null {
 
   const width = 860;
   const height = 620;
-  const left = window.screen.width ? Math.max(50, Math.round((window.screen.width - width) / 2)) : 100;
-  const top = window.screen.height ? Math.max(50, Math.round((window.screen.height - height) / 2)) : 100;
+  const screenW = typeof window !== 'undefined' ? (window.screen.availWidth || window.screen.width || 1280) : 1280;
+  const screenH = typeof window !== 'undefined' ? (window.screen.availHeight || window.screen.height || 800) : 800;
+  const left = Math.max(20, Math.round((screenW - width) / 2) + 200);
+  const top = Math.max(20, Math.round((screenH - height) / 2) + 30);
 
   const win = window.open(
     '',
@@ -845,7 +851,7 @@ export function openVolPopoutWindow(): Window | null {
 
   <div class="content" id="vol-content">
     <div class="drop-hint">
-      💡 <b>Hinweis:</b> Alle gezeichneten Flächen werden hier automatisch aufgelistet. Geben Sie die <b>lichte Raumhöhe (m)</b> ein, damit das Volumen berechnet wird.
+      💡 <b>Hinweis:</b> Geben Sie die <b>lichte Raumhöhe (m)</b> ein, um das Volumen zu berechnen. Sie können Flächen aus dem Flächen-Fenster per Drag & Drop hierher ziehen.
     </div>
     <table id="vol-table">
       <thead id="vol-thead"></thead>
@@ -853,8 +859,8 @@ export function openVolPopoutWindow(): Window | null {
       <tfoot id="vol-tfoot"></tfoot>
     </table>
     <div id="vol-empty" class="empty-state" style="display: none;">
-      Keine gezeichneten Flächen vorhanden.<br>
-      • Zeichnen Sie mit dem <b>Flächen-</b> oder <b>Volumen-Werkzeug</b> Flächen auf der Karte.
+      Keine Volumenmessungen vorhanden.<br>
+      • Zeichnen Sie mit dem <b>Volumen-Werkzeug</b> Flächen auf der Karte oder ziehen Sie Flächen aus dem <b>Flächen-Fenster</b> per Drag & Drop hierher.
     </div>
   </div>
 
@@ -1076,18 +1082,18 @@ function renderVolPopoutContent() {
     return;
   }
 
-  // Collect ALL surface annotations (volume, area, circle) so drawn areas automatically appear
-  const volAnns: (MeasureVolumeAnnotation | MeasureAreaAnnotation | MeasureCircleAnnotation)[] = [];
+  // Collect ONLY volume annotations so window is strictly independent
+  const volAnns: MeasureVolumeAnnotation[] = [];
   Object.values(activeDoc.annotations).forEach((pageAnns) => {
     pageAnns.forEach((ann) => {
-      if (ann.type === 'measure-volume' || ann.type === 'measure-area' || ann.type === 'measure-circle') {
-        volAnns.push(ann as any);
+      if (ann.type === 'measure-volume') {
+        volAnns.push(ann as MeasureVolumeAnnotation);
       }
     });
   });
   volAnns.sort((a, b) => a.createdAt - b.createdAt);
 
-  if (badge) badge.textContent = `${volAnns.length} Flächen`;
+  if (badge) badge.textContent = `${volAnns.length} Volumen`;
 
   if (volAnns.length === 0) {
     if (tbody) tbody.innerHTML = '';
