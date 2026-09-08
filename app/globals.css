@@ -825,3 +825,97 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #718096;
 }
+
+/* ────────────────────────────────────────────
+   Modal Dialog System
+──────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999999;
+  pointer-events: auto;
+}
+
+.modal {
+  background: var(--bg-panel, #2a2b30);
+  border: 1px solid var(--border, #3d3e47);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+  padding: 20px 24px;
+  color: var(--text-primary, #e8eaed);
+  z-index: 1000000;
+  pointer-events: auto;
+  position: relative;
+}
+
+.modal h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #e8eaed);
+}
+
+.modal-input, .modal-select {
+  background: var(--bg-app, #1a1b1e);
+  border: 1px solid var(--border, #3d3e47);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text-primary, #e8eaed);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.modal-input:focus, .modal-select:focus {
+  border-color: var(--accent, #4f8ef7);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-primary {
+  background: var(--accent, #4f8ef7);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover, #6ba3f8);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-secondary, #9aa0ac);
+  border: 1px solid var(--border, #3d3e47);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary, #e8eaed);
+}

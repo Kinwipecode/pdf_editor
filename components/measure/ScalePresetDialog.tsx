@@ -76,11 +76,20 @@ export function ScalePresetDialog({
                 <button
                   key={p.ratio}
                   type="button"
-                  onClick={() => setRatioInput(String(p.ratio))}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRatioInput(String(p.ratio));
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setRatioInput(String(p.ratio));
+                    const pxPerUnit = calculateScalePixelsPerUnit(p.ratio, unit);
+                    onConfirm(pxPerUnit, unit, p.ratio);
+                  }}
                   style={{
-                    padding: '6px 8px',
+                    padding: '8px 10px',
                     borderRadius: 6,
-                    border: `1px solid ${isSelected ? '#4f8ef7' : 'var(--border)'}`,
+                    border: `1.5px solid ${isSelected ? '#4f8ef7' : 'var(--border)'}`,
                     background: isSelected ? 'rgba(79, 142, 247, 0.25)' : 'var(--bg-app)',
                     color: isSelected ? '#ffffff' : 'var(--text-secondary)',
                     fontWeight: isSelected ? 600 : 400,
@@ -91,10 +100,12 @@ export function ScalePresetDialog({
                     alignItems: 'center',
                     gap: 2,
                     transition: 'all 0.15s ease',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none'
                   }}
                 >
-                  <span style={{ fontWeight: 600 }}>{p.label}</span>
-                  <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{p.desc.split(' ')[0]}</span>
+                  <span style={{ fontWeight: 600, pointerEvents: 'none' }}>{p.label}</span>
+                  <span style={{ fontSize: 9, color: 'var(--text-muted)', pointerEvents: 'none' }}>{p.desc.split(' ')[0]}</span>
                 </button>
               );
             })}
