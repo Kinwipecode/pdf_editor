@@ -193,6 +193,7 @@ export type Annotation =
 export interface MeasureScale {
   pixelsPerUnit: number; // px / unit in PDF canvas space
   unit: string;          // e.g. "mm", "m", "ft", "in"
+  ratio?: number;        // e.g. 100 for 1:100
 }
 
 // ──────────────────────────────────────────────

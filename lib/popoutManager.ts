@@ -193,7 +193,7 @@ export function openAreaPopoutWindow(): Window | null {
         const pageAnns = activeDoc.annotations[page] || [];
         const ann = pageAnns.find((a) => a.id === annId);
         if (ann) {
-          const newCalcs = [...(ann.calculations || [])];
+          const newCalcs = [...((ann as any).calculations || [])];
           while (newCalcs.length <= colIdx) newCalcs.push('');
           newCalcs[colIdx] = target.value;
           state.updateAnnotation(activeDoc.id, page, { ...ann, calculations: newCalcs } as any);
@@ -217,7 +217,7 @@ export function openAreaPopoutWindow(): Window | null {
         const pageAnns = activeDoc.annotations[page] || [];
         const ann = pageAnns.find((a) => a.id === annId);
         if (ann) {
-          state.updateAnnotation(activeDoc.id, page, { ...ann, isNegative: !ann.isNegative } as any);
+          state.updateAnnotation(activeDoc.id, page, { ...ann, isNegative: !(ann as any).isNegative } as any);
         }
         return;
       }
@@ -248,16 +248,18 @@ export function openAreaPopoutWindow(): Window | null {
   }
 
     // Drag & drop support: drag area row out to volume window or receive volume row
-    tbody.addEventListener('dragstart', (e: DragEvent) => {
-      const tr = (e.target as HTMLElement).closest('tr');
-      if (tr && tr.dataset.annId) {
-        e.dataTransfer?.setData('application/json', JSON.stringify({
-          annId: tr.dataset.annId,
-          page: parseInt(tr.dataset.page || '0', 10),
-          from: 'area'
-        }));
-      }
-    });
+    if (tbody) {
+      tbody.addEventListener('dragstart', (e: DragEvent) => {
+        const tr = (e.target as HTMLElement).closest('tr');
+        if (tr && tr.dataset.annId) {
+          e.dataTransfer?.setData('application/json', JSON.stringify({
+            annId: tr.dataset.annId,
+            page: parseInt(tr.dataset.page || '0', 10),
+            from: 'area'
+          }));
+        }
+      });
+    }
 
     const contentArea = doc.querySelector('.content');
     if (contentArea) {
@@ -578,7 +580,7 @@ export function openDistPopoutWindow(): Window | null {
         const pageAnns = activeDoc.annotations[page] || [];
         const ann = pageAnns.find((a) => a.id === annId);
         if (ann) {
-          const newCalcs = [...(ann.calculations || [])];
+          const newCalcs = [...((ann as any).calculations || [])];
           while (newCalcs.length <= colIdx) newCalcs.push('');
           newCalcs[colIdx] = target.value;
           state.updateAnnotation(activeDoc.id, page, { ...ann, calculations: newCalcs } as any);
@@ -602,7 +604,7 @@ export function openDistPopoutWindow(): Window | null {
         const pageAnns = activeDoc.annotations[page] || [];
         const ann = pageAnns.find((a) => a.id === annId);
         if (ann) {
-          state.updateAnnotation(activeDoc.id, page, { ...ann, isNegative: !ann.isNegative } as any);
+          state.updateAnnotation(activeDoc.id, page, { ...ann, isNegative: !(ann as any).isNegative } as any);
         }
         return;
       }
@@ -953,7 +955,7 @@ export function openVolPopoutWindow(): Window | null {
         }
       } else if (target.classList.contains('input-factor')) {
         const colIdx = parseInt(target.dataset.colIdx || '0', 10);
-        const newCalcs = [...(ann.calculations || [])];
+        const newCalcs = [...((ann as any).calculations || [])];
         while (newCalcs.length <= colIdx) newCalcs.push('');
         newCalcs[colIdx] = target.value;
         state.updateAnnotation(activeDoc.id, page, { ...ann, calculations: newCalcs } as any);
@@ -976,7 +978,7 @@ export function openVolPopoutWindow(): Window | null {
         const pageAnns = activeDoc.annotations[page] || [];
         const ann = pageAnns.find((a) => a.id === annId);
         if (ann) {
-          state.updateAnnotation(activeDoc.id, page, { ...ann, isNegative: !ann.isNegative } as any);
+          state.updateAnnotation(activeDoc.id, page, { ...ann, isNegative: !(ann as any).isNegative } as any);
         }
         return;
       }
