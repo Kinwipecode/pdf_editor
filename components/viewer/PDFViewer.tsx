@@ -204,6 +204,7 @@ export function PDFViewer({ docId, onCursorPos }: PDFViewerProps) {
   const doc = openDocuments.find((d) => d.id === docId);
 
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [calibratePending, setCalibratePending] = useState<{
     start: Point; end: Point; pixelDist: number;
   } | null>(null);
@@ -240,6 +241,7 @@ export function PDFViewer({ docId, onCursorPos }: PDFViewerProps) {
   // Load Document
   useEffect(() => {
     if (!doc?.fileUrl) return;
+    setPdfError(null);
     if (doc.fileType === 'image') {
       setPdfDoc(null);
       setPageCount(docId, 1);
@@ -255,8 +257,11 @@ export function PDFViewer({ docId, onCursorPos }: PDFViewerProps) {
         if (cancelled) return;
         setPdfDoc(loaded);
         setPageCount(docId, loaded.numPages);
-      } catch (err) {
+      } catch (err: any) {
         console.error('PDF Load Error:', err);
+        if (!cancelled) {
+          setPdfError(err?.message || 'Fehler beim Laden des PDF-Dokuments.');
+        }
       }
     })();
 
@@ -503,6 +508,11 @@ export function PDFViewer({ docId, onCursorPos }: PDFViewerProps) {
               />
             );
           })
+        ) : pdfError ? (
+          <div style={{ color: '#ef4444', marginTop: 60, textAlign: 'center', padding: '0 20px' }}>
+            <p style={{ fontWeight: 600, fontSize: 16 }}>⚠️ PDF konnte nicht geladen werden</p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>{pdfError}</p>
+          </div>
         ) : (
           <div style={{ color: 'var(--text-muted)', marginTop: 60 }}>
             PDF wird geladen...
