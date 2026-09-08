@@ -21,6 +21,7 @@ import type { ToolType } from '@/types';
 import { ColorPicker } from './ColorPicker';
 import { downloadPdfWithAnnotations } from '@/lib/pdfExport';
 import { ScalePresetDialog, calculateScalePixelsPerUnit } from './measure/ScalePresetDialog';
+import { openAreaPopoutWindow, closeAreaPopoutWindow, openDistPopoutWindow, closeDistPopoutWindow } from '@/lib/popoutManager';
 
 
 const RIBBON_TABS = ['Start', 'Ansicht', 'Bearbeiten', 'Zeichnen', 'Messen', 'Seiten'] as const;
@@ -595,15 +596,31 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
                 icon={<MdFunctions />}
                 label="Flächen"
                 active={calculatorOpen}
-                onClick={toggleCalculator}
-                tooltip="Messergebnisse auswerten (Flächen-Fenster)"
+                onClick={() => {
+                  if (calculatorOpen) {
+                    closeAreaPopoutWindow();
+                    setCalculatorOpen(false);
+                  } else {
+                    openAreaPopoutWindow();
+                    setCalculatorOpen(true);
+                  }
+                }}
+                tooltip="Messergebnisse auswerten (Flächen-Fenster als eigenständiges Pop-up auf 2. Bildschirm)"
               />
               <ToolBtn
                 icon={<MdFunctions />}
                 label="Längen"
                 active={distCalculatorOpen}
-                onClick={toggleDistCalculator}
-                tooltip="Messergebnisse auswerten (Längen-Fenster)"
+                onClick={() => {
+                  if (distCalculatorOpen) {
+                    closeDistPopoutWindow();
+                    setDistCalculatorOpen(false);
+                  } else {
+                    openDistPopoutWindow();
+                    setDistCalculatorOpen(true);
+                  }
+                }}
+                tooltip="Messergebnisse auswerten (Längen-Fenster als eigenständiges Pop-up auf 2. Bildschirm)"
               />
             </RibbonGroup>
             <RibbonGroup label="Aktionen">

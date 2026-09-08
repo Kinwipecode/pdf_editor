@@ -4,6 +4,7 @@ import { MdClose, MdAdd, MdRemove, MdDelete, MdOpenInNew, MdCallReceived } from 
 import React, { useState, useMemo, useEffect, useRef, memo } from 'react';
 import type { MeasureDistanceAnnotation } from '@/types';
 import { PopoutWindow } from './PopoutWindow';
+import { getDistPopoutWindow, openDistPopoutWindow, closeDistPopoutWindow } from '@/lib/popoutManager';
 
 function LinesCalcPanelInternal() {
     const {
@@ -13,9 +14,12 @@ function LinesCalcPanelInternal() {
     const activeDoc = useActiveDocument();
 
     const [isDragging, setIsDragging] = useState(false);
-    const [isPopout, setIsPopout] = useState(false);
+    const [isPopout, setIsPopout] = useState(true);
     const [pos, setPos] = useState({ x: 150, y: 200 });
     const dragStart = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
+
+    const popWin = getDistPopoutWindow();
+    const activeIsPopout = isPopout && !!popWin && !popWin.closed;
 
     // Find all distance annotations across all pages
     const distanceAnnotations = useMemo(() => {
@@ -34,23 +38,38 @@ function LinesCalcPanelInternal() {
     if (!distCalculatorOpen || !activeDoc) return null;
 
     const handleDragDown = (e: React.PointerEvent) => {
-        if (isPopout) return;
+        if (activeIsPopout) return;
         setIsDragging(true);
         dragStart.current = { x: e.clientX, y: e.clientY, startX: pos.x, startY: pos.y };
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     };
 
     const handleDragMove = (e: React.PointerEvent) => {
-        if (!isDragging || isPopout) return;
+        if (!isDragging || activeIsPopout) return;
         const dx = e.clientX - dragStart.current.x;
         const dy = e.clientY - dragStart.current.y;
         setPos({ x: dragStart.current.startX + dx, y: dragStart.current.startY + dy });
     };
 
     const handleDragUp = (e: React.PointerEvent) => {
-        if (isPopout) return;
+        if (activeIsPopout) return;
         setIsDragging(false);
         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    };
+
+    const handleTogglePopout = () => {
+        if (activeIsPopout) {
+            closeDistPopoutWindow();
+            setIsPopout(false);
+        } else {
+            openDistPopoutWindow();
+            setIsPopout(true);
+        }
+    };
+
+    const handleClosePanel = () => {
+        closeDistPopoutWindow();
+        setDistCalculatorOpen(false);
     };
 
     const parseAndEval = (startVal: number, calculations: string[]) => {
@@ -97,12 +116,13 @@ function LinesCalcPanelInternal() {
         <PopoutWindow
             title="Längen (∑) – PDF Editor"
             isOpen={distCalculatorOpen && !!activeDoc}
-            isPopout={isPopout}
-            onClose={() => setDistCalculatorOpen(false)}
-            onPopoutClose={() => setIsPopout(false)}
+            isPopout={activeIsPopout}
+            popWindow={popWin}
+            onClose={handleClosePanel}
+            onPopoutToggle={handleTogglePopout}
         >
             <div
-                style={isPopout ? {
+                style={activeIsPopout ? {
                     width: '100vw',
                     height: '100vh',
                     backgroundColor: '#232429',
@@ -141,7 +161,7 @@ function LinesCalcPanelInternal() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        cursor: isPopout ? 'default' : (isDragging ? 'grabbing' : 'grab'),
+                        cursor: activeIsPopout ? 'default' : (isDragging ? 'grabbing' : 'grab'),
                         userSelect: 'none'
                     }}
                 >
@@ -193,14 +213,14 @@ function LinesCalcPanelInternal() {
                         <div style={{ width: '1px', height: '16px', background: '#3d3e47', margin: '0 4px' }} />
                         <button
                             onPointerDown={(e) => e.stopPropagation()}
-                            onClick={() => setIsPopout(!isPopout)}
+                            onClick={handleTogglePopout}
                             style={{
-                                background: isPopout ? '#0078d7' : 'transparent',
+                                background: activeIsPopout ? '#0078d7' : 'transparent',
                                 border: 'none',
                                 borderRadius: '4px',
                                 padding: '3px 6px',
                                 cursor: 'pointer',
-                                color: isPopout ? '#fff' : '#9aa0ac',
+                                color: activeIsPopout ? '#fff' : '#9aa0ac',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -208,15 +228,15 @@ function LinesCalcPanelInternal() {
                                 fontSize: '11px',
                                 fontWeight: 500
                             }}
-                            title={isPopout ? "Wieder im Hauptfenster andocken" : "In eigenem App-Fenster (2. Bildschirm) öffnen"}
+                            title={activeIsPopout ? "Wieder im Hauptfenster andocken" : "In eigenem App-Fenster (2. Bildschirm) öffnen"}
                         >
-                            {isPopout ? <MdCallReceived size={16} /> : <MdOpenInNew size={16} />}
-                            <span>{isPopout ? 'Andocken' : 'Pop-out'}</span>
+                            {activeIsPopout ? <MdCallReceived size={16} /> : <MdOpenInNew size={16} />}
+                            <span>{activeIsPopout ? 'Andocken' : 'Pop-out'}</span>
                         </button>
                         <div style={{ width: '1px', height: '16px', background: '#3d3e47', margin: '0 4px' }} />
                         <button
                             onPointerDown={(e) => e.stopPropagation()}
-                            onClick={() => setDistCalculatorOpen(false)}
+                            onClick={handleClosePanel}
                             style={{
                                 background: 'transparent', border: 'none', cursor: 'pointer', color: '#9aa0ac'
                             }}
