@@ -32,15 +32,7 @@ export const PopoutWindow: React.FC<PopoutWindowProps> = ({
     const doc = popWindow.document;
     doc.title = title;
 
-    // Base body styles for dark modern UI
-    doc.body.style.margin = '0';
-    doc.body.style.padding = '0';
-    doc.body.style.backgroundColor = '#1e1f24';
-    doc.body.style.color = '#e8eaed';
-    doc.body.style.fontFamily = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    doc.body.style.overflow = 'hidden';
-
-    // Copy style tags and stylesheet links from parent window
+    // Copy style tags and stylesheet links from parent window to popout window
     const styleElements = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'));
     styleElements.forEach((node) => {
       try {

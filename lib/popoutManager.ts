@@ -3,7 +3,7 @@
 let areaWindowRef: Window | null = null;
 let distWindowRef: Window | null = null;
 
-export function openAreaPopoutWindow(): Window | null {
+export function openAreaPopoutWindow(title = "Flächen (∑) – PDF Editor"): Window | null {
   if (typeof window === 'undefined') return null;
 
   if (areaWindowRef && !areaWindowRef.closed) {
@@ -24,12 +24,33 @@ export function openAreaPopoutWindow(): Window | null {
 
   if (win) {
     areaWindowRef = win;
+    try {
+      const doc = win.document;
+      doc.open();
+      doc.write(`<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #1e1f24; color: #e8eaed; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+    #popout-root { width: 100vw; height: 100vh; display: flex; flex-direction: column; background: #1e1f24; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="popout-root"></div>
+</body>
+</html>`);
+      doc.close();
+    } catch (e) {
+      console.error("Error initializing popout document", e);
+    }
     win.focus();
   }
   return win;
 }
 
-export function openDistPopoutWindow(): Window | null {
+export function openDistPopoutWindow(title = "Längen (∑) – PDF Editor"): Window | null {
   if (typeof window === 'undefined') return null;
 
   if (distWindowRef && !distWindowRef.closed) {
@@ -50,6 +71,27 @@ export function openDistPopoutWindow(): Window | null {
 
   if (win) {
     distWindowRef = win;
+    try {
+      const doc = win.document;
+      doc.open();
+      doc.write(`<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #1e1f24; color: #e8eaed; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+    #popout-root { width: 100vw; height: 100vh; display: flex; flex-direction: column; background: #1e1f24; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="popout-root"></div>
+</body>
+</html>`);
+      doc.close();
+    } catch (e) {
+      console.error("Error initializing popout document", e);
+    }
     win.focus();
   }
   return win;
@@ -67,14 +109,18 @@ export function getDistPopoutWindow(): Window | null {
 
 export function closeAreaPopoutWindow() {
   if (areaWindowRef && !areaWindowRef.closed) {
-    areaWindowRef.close();
+    try {
+      areaWindowRef.close();
+    } catch (e) {}
   }
   areaWindowRef = null;
 }
 
 export function closeDistPopoutWindow() {
   if (distWindowRef && !distWindowRef.closed) {
-    distWindowRef.close();
+    try {
+      distWindowRef.close();
+    } catch (e) {}
   }
   distWindowRef = null;
 }
