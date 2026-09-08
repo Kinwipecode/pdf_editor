@@ -241,12 +241,11 @@ export function AnnotationCanvas({
         const scale = doc?.scale ?? { pixelsPerUnit: 1, unit: 'px' };
         const areaPx = polyArea(finalPts);
         const realArea = areaPx / (scale.pixelsPerUnit ** 2);
-        const defaultH = useAppStore.getState().defaultRoomHeight || 2.50;
         addAnnotation(docId, page, {
           id: d.id, type: 'measure-volume', page, color: '#a855f7', opacity: 1,
           createdAt: Date.now(), points: finalPts,
           displayValue: realArea.toFixed(2), unit: scale.unit,
-          height: defaultH,
+          height: undefined,
         } as MeasureVolumeAnnotation);
         selectAnnotation(docId, page, d.id);
         drawing.current = null;
@@ -799,9 +798,9 @@ export function AnnotationCanvas({
           const { points, displayValue, unit, color, id, selected, height } = ann as MeasureVolumeAnnotation;
           if (points.length < 2) return null;
           const pstr = points.map((p) => `${p.x * pdfScale},${p.y * pdfScale}`).join(' ');
-          const roomH = height ?? (useAppStore.getState().defaultRoomHeight || 2.50);
+          const hasHeight = height !== undefined && height !== null && !isNaN(height) && height > 0;
           const areaVal = parseFloat(displayValue) || 0;
-          const volVal = areaVal * roomH;
+          const volVal = hasHeight ? areaVal * height! : 0;
           const cx = points.reduce((s, p) => s + p.x, 0) / points.length * pdfScale;
           const cy = points.reduce((s, p) => s + p.y, 0) / points.length * pdfScale;
           const mainColor = color || '#a855f7';
@@ -888,12 +887,14 @@ export function AnnotationCanvas({
                 />
               ))}
               <g pointerEvents="none">
-                <text x={cx} y={cy - 6} textAnchor="middle" className="measure-label" style={{ fill: '#e9d5ff', fontWeight: 600, fontSize: 11 }}>
-                  {displayValue} {unit}² (h={roomH.toFixed(2)}m)
+                <text x={cx} y={cy - (hasHeight ? 6 : 0)} textAnchor="middle" className="measure-label" style={{ fill: hasHeight ? '#e9d5ff' : '#9aa0ac', fontWeight: 600, fontSize: 11 }}>
+                  {displayValue} {unit}² {hasHeight ? `(h=${height!.toFixed(2)}m)` : '(Höhe fehlt)'}
                 </text>
-                <text x={cx} y={cy + 10} textAnchor="middle" className="measure-label" style={{ fill: '#c084fc', fontWeight: 'bold', fontSize: 13 }}>
-                  {volVal.toFixed(2)} {unit}³
-                </text>
+                {hasHeight && (
+                  <text x={cx} y={cy + 10} textAnchor="middle" className="measure-label" style={{ fill: '#c084fc', fontWeight: 'bold', fontSize: 13 }}>
+                    {volVal.toFixed(2)} {unit}³
+                  </text>
+                )}
               </g>
             </g>
           );

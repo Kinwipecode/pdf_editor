@@ -2,13 +2,12 @@
 import { useAppStore, useActiveDocument } from '@/store/useAppStore';
 import { MdClose, MdAdd, MdRemove, MdDelete, MdOpenInNew } from 'react-icons/md';
 import React, { useState, useMemo, useRef, memo } from 'react';
-import type { MeasureVolumeAnnotation } from '@/types';
+import type { MeasureVolumeAnnotation, MeasureAreaAnnotation, MeasureCircleAnnotation } from '@/types';
 import { getVolPopoutWindow, openVolPopoutWindow, closeVolPopoutWindow } from '@/lib/popoutManager';
 
 function VolCalcPanelInternal() {
     const {
         volCalculatorOpen, setVolCalculatorOpen, volCalculatorColCount, setVolCalculatorColCount,
-        defaultRoomHeight, setDefaultRoomHeight,
         updateAnnotation, selectAnnotation, deleteAnnotation
     } = useAppStore();
     const activeDoc = useActiveDocument();
@@ -21,14 +20,14 @@ function VolCalcPanelInternal() {
     const popWin = getVolPopoutWindow();
     const activeIsPopout = isPopout && !!popWin && !popWin.closed;
 
-    // Find all volume annotations across all pages
-    const volumeAnnotations = useMemo(() => {
+    // Collect ALL surface annotations (volume, area, circle) so drawn areas automatically appear
+    const surfaceAnnotations = useMemo(() => {
         if (!activeDoc) return [];
-        const all: MeasureVolumeAnnotation[] = [];
+        const all: (MeasureVolumeAnnotation | MeasureAreaAnnotation | MeasureCircleAnnotation)[] = [];
         Object.values(activeDoc.annotations).forEach((pageAnns) => {
             pageAnns.forEach((ann) => {
-                if (ann.type === 'measure-volume') {
-                    all.push(ann as MeasureVolumeAnnotation);
+                if (ann.type === 'measure-volume' || ann.type === 'measure-area' || ann.type === 'measure-circle') {
+                    all.push(ann as any);
                 }
             });
         });
@@ -93,26 +92,36 @@ function VolCalcPanelInternal() {
         return num.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
-    const results = volumeAnnotations.map(ann => {
+    const results = surfaceAnnotations.map(ann => {
         const baseArea = parseFloat(ann.displayValue.replace(/[^\d.]/g, '')) || 0;
-        const height = ann.height ?? (defaultRoomHeight || 2.50);
-        const baseVol = baseArea * height;
+        const height = (ann as MeasureVolumeAnnotation).height;
+        const hasHeight = height !== undefined && height !== null && !isNaN(height) && height > 0;
 
         const calcList = ann.calculations || [];
         const paddedCalcs = [...calcList];
         while (paddedCalcs.length < volCalculatorColCount) paddedCalcs.push('');
 
-        const finalResult = parseAndEval(baseVol, paddedCalcs.slice(0, volCalculatorColCount)) * (ann.isNegative ? -1 : 1);
-        return { ann, baseArea, height, paddedCalcs, finalResult };
+        let finalResult = 0;
+        if (hasHeight) {
+            const baseVol = baseArea * height!;
+            finalResult = parseAndEval(baseVol, paddedCalcs.slice(0, volCalculatorColCount)) * (ann.isNegative ? -1 : 1);
+        }
+        return { ann, baseArea, height, hasHeight, paddedCalcs, finalResult };
     });
 
-    const totalSum = results.reduce((sum, r) => sum + r.finalResult, 0);
+    const totalSum = results.reduce((sum, r) => sum + (r.hasHeight ? r.finalResult : 0), 0);
 
-    const updateHeight = (ann: MeasureVolumeAnnotation, val: number) => {
-        updateAnnotation(activeDoc.id, ann.page, { ...ann, height: val } as any);
+    const updateHeight = (ann: any, valStr: string) => {
+        const raw = valStr.trim();
+        const val = parseFloat(raw);
+        if (raw === '' || isNaN(val) || val <= 0) {
+            updateAnnotation(activeDoc.id, ann.page, { ...ann, height: undefined } as any);
+        } else {
+            updateAnnotation(activeDoc.id, ann.page, { ...ann, type: 'measure-volume', height: val } as any);
+        }
     };
 
-    const updateCalc = (ann: MeasureVolumeAnnotation, index: number, val: string) => {
+    const updateCalc = (ann: any, index: number, val: string) => {
         const newCalcs = [...(ann.calculations || [])];
         while (newCalcs.length <= index) newCalcs.push('');
         newCalcs[index] = val;
@@ -133,8 +142,7 @@ function VolCalcPanelInternal() {
                 if (ann) {
                     updateAnnotation(activeDoc.id, data.page, {
                         ...ann,
-                        type: 'measure-volume',
-                        height: (ann as any).height ?? (defaultRoomHeight || 2.50)
+                        type: 'measure-volume'
                     } as any);
                 }
             }
@@ -183,32 +191,7 @@ function VolCalcPanelInternal() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontWeight: 600, fontSize: '14px' }}>Volumen (∑)</span>
                     <span style={{ fontSize: '11px', color: '#d8b4fe', background: '#3b284c', border: '1px solid #6b21a8', padding: '2px 8px', borderRadius: '4px' }}>
-                        {volumeAnnotations.length} Räume
-                    </span>
-                    <span style={{ fontSize: '11px', color: '#9aa0ac', marginLeft: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        Std.-Höhe:
-                        <input
-                            type="number"
-                            step="0.01"
-                            min="0.1"
-                            value={defaultRoomHeight || 2.50}
-                            onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                if (!isNaN(val) && val > 0) setDefaultRoomHeight(val);
-                            }}
-                            style={{
-                                width: '55px',
-                                background: '#15131b',
-                                border: '1px solid #9333ea',
-                                borderRadius: '4px',
-                                padding: '2px 4px',
-                                color: '#a855f7',
-                                fontWeight: 'bold',
-                                fontSize: '11px',
-                                textAlign: 'right',
-                                outline: 'none'
-                            }}
-                        /> m
+                        {surfaceAnnotations.length} Flächen
                     </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -295,13 +278,13 @@ function VolCalcPanelInternal() {
                     color: '#c084fc',
                     textAlign: 'center'
                 }}>
-                    📦 <b>Drag & Drop:</b> Gezeichnete Flächen aus dem Flächen-Fenster hierher ziehen!
+                    💡 <b>Hinweis:</b> Geben Sie in der Spalte <b>Lichte Höhe (m)</b> die Raumhöhe ein, um das Volumen zu berechnen.
                 </div>
 
-                {volumeAnnotations.length === 0 ? (
+                {surfaceAnnotations.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '30px 20px', color: '#9aa0ac', fontSize: '13px', border: '2px dashed #3d3e47', borderRadius: '8px' }}>
-                        Keine Raum-Volumen vorhanden.<br />
-                        Zeichnen Sie mit dem <b>Volumen-Werkzeug</b> oder ziehen Sie Flächen hier hinein.
+                        Keine gezeichneten Flächen vorhanden.<br />
+                        Zeichnen Sie Flächen auf der Karte.
                     </div>
                 ) : (
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
@@ -320,7 +303,7 @@ function VolCalcPanelInternal() {
                             </tr>
                         </thead>
                         <tbody>
-                            {results.map(({ ann, baseArea, height, paddedCalcs, finalResult }) => (
+                            {results.map(({ ann, baseArea, height, hasHeight, paddedCalcs, finalResult }) => (
                                 <tr
                                     key={ann.id}
                                     draggable
@@ -335,11 +318,13 @@ function VolCalcPanelInternal() {
                                     style={{
                                         borderBottom: '1px solid #32333b',
                                         backgroundColor: ann.selected ? 'rgba(147, 51, 234, 0.22)' : 'transparent',
+                                        color: hasHeight ? '#e8eaed' : '#72768d',
                                         cursor: 'grab'
                                     }}
+                                    title={hasHeight ? 'Volumen berechnet' : 'Raumhöhe eingeben, um Volumen zu berechnen'}
                                 >
                                     <td style={{ padding: '8px 4px', textAlign: 'center' }}>
-                                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: ann.color || '#a855f7', margin: '0 auto' }} />
+                                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: ann.color || '#a855f7', margin: '0 auto', opacity: hasHeight ? 1 : 0.4 }} />
                                     </td>
                                     <td style={{ padding: '8px 4px', textAlign: 'center' }}>
                                         <button
@@ -356,32 +341,31 @@ function VolCalcPanelInternal() {
                                                 cursor: 'pointer',
                                                 color: '#fff',
                                                 backgroundColor: ann.isNegative ? '#ea4335' : '#34a853',
+                                                opacity: hasHeight ? 1 : 0.5,
                                                 minWidth: '24px'
                                             }}
                                         >
                                             {ann.isNegative ? '-' : '+'}
                                         </button>
                                     </td>
-                                    <td style={{ padding: '8px 4px', color: '#9aa0ac' }}>S. {ann.page + 1}</td>
-                                    <td style={{ padding: '8px 4px', fontWeight: 'bold' }}>{formatNum(baseArea)} {unit}²</td>
+                                    <td style={{ padding: '8px 4px', color: hasHeight ? '#9aa0ac' : '#72768d' }}>S. {ann.page + 1}</td>
+                                    <td style={{ padding: '8px 4px', fontWeight: 'bold', color: hasHeight ? '#e8eaed' : '#72768d' }}>{formatNum(baseArea)} {unit}²</td>
                                     <td style={{ padding: '4px' }}>
                                         <input
                                             type="number"
                                             step="0.01"
                                             min="0.1"
-                                            value={height}
-                                            onChange={(e) => {
-                                                const val = parseFloat(e.target.value);
-                                                if (!isNaN(val) && val > 0) updateHeight(ann, val);
-                                            }}
+                                            placeholder="Höhe in m"
+                                            value={hasHeight ? height : ''}
+                                            onChange={(e) => updateHeight(ann, e.target.value)}
                                             onClick={(e) => e.stopPropagation()}
                                             style={{
-                                                width: '68px',
+                                                width: '80px',
                                                 backgroundColor: '#15131b',
-                                                border: '1px solid #9333ea',
+                                                border: hasHeight ? '1px solid #9333ea' : '1px solid #4a4b56',
                                                 borderRadius: '4px',
                                                 padding: '4px 6px',
-                                                color: '#a855f7',
+                                                color: hasHeight ? '#a855f7' : '#72768d',
                                                 fontWeight: 'bold',
                                                 fontSize: '12px',
                                                 outline: 'none',
@@ -403,15 +387,15 @@ function VolCalcPanelInternal() {
                                                     border: '1px solid #3d3e47',
                                                     borderRadius: '4px',
                                                     padding: '4px 8px',
-                                                    color: '#fff',
+                                                    color: hasHeight ? '#fff' : '#72768d',
                                                     fontSize: '11px',
                                                     outline: 'none'
                                                 }}
                                             />
                                         </td>
                                     ))}
-                                    <td style={{ padding: '8px 4px', textAlign: 'right', fontWeight: 'bold', color: '#c084fc', minWidth: '90px', fontSize: '13px' }}>
-                                        {formatNum(finalResult)} {unit}³
+                                    <td style={{ padding: '8px 4px', textAlign: 'right', fontWeight: hasHeight ? 'bold' : 'normal', color: hasHeight ? '#c084fc' : '#5c6070', minWidth: '90px', fontSize: '13px' }}>
+                                        {hasHeight ? `${formatNum(finalResult)} ${unit}³` : '—'}
                                     </td>
                                     <td style={{ padding: '8px 4px', textAlign: 'right' }}>
                                         <button
@@ -448,7 +432,7 @@ function VolCalcPanelInternal() {
 
             {/* Footer */}
             <div style={{ padding: '8px 16px', background: '#1a1721', fontSize: '10px', color: '#9aa0ac', borderTop: '1px solid #3d3e47' }}>
-                Tipp: Geben Sie in der Spalte 'Lichte Höhe (m)' die jeweilige Raumhöhe ein. Das Volumen wird automatisch berechnet.
+                Tipp: Ohne Raumhöhe bleiben Flächen grau und fließen nicht in die Summe ein. Sobald Sie eine Höhe eingeben, wird das Volumen berechnet.
             </div>
         </div>
     );

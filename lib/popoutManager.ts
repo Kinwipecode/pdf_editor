@@ -805,6 +805,8 @@ export function openVolPopoutWindow(): Window | null {
     th { color: #9aa0ac; border-bottom: 1px solid #3d3e47; text-align: left; padding: 8px 4px; font-weight: 500; }
     td { padding: 8px 4px; border-bottom: 1px solid #32333b; vertical-align: middle; }
     tr.selected { background: rgba(147, 51, 234, 0.22) !important; }
+    tr.no-height { color: #72768d !important; }
+    tr.no-height td { color: #72768d !important; }
     tr:hover { background: rgba(255, 255, 255, 0.04); cursor: grab; }
     tr:active { cursor: grabbing; }
     .color-dot { width: 10px; height: 10px; border-radius: 50%; margin: 0 auto; }
@@ -813,9 +815,11 @@ export function openVolPopoutWindow(): Window | null {
     .btn-mode.neg { background: #ea4335; }
     .input-factor { width: 80px; background: #15131b; border: 1px solid #3d3e47; border-radius: 4px; padding: 4px 8px; color: #fff; font-size: 11px; outline: none; }
     .input-factor:focus { border-color: #a855f7; }
-    .input-height { width: 68px; background: #15131b; border: 1px solid #9333ea; border-radius: 4px; padding: 4px 6px; color: #a855f7; font-weight: bold; font-size: 12px; outline: none; text-align: right; }
+    .input-height { width: 80px; background: #15131b; border: 1px solid #9333ea; border-radius: 4px; padding: 4px 6px; color: #a855f7; font-weight: bold; font-size: 12px; outline: none; text-align: right; }
+    .input-height:placeholder-shown { border-color: #4a4b56; color: #72768d; font-weight: normal; }
     .input-height:focus { border-color: #c084fc; box-shadow: 0 0 0 2px rgba(168,85,247,0.3); }
     .result-cell { text-align: right; font-weight: bold; color: #c084fc; min-width: 90px; font-size: 13px; }
+    .result-cell.empty { color: #5c6070; font-weight: normal; }
     .total-row { border-top: 2px solid #a855f7; font-weight: bold; font-size: 14px; }
     .total-label { padding: 16px 4px; }
     .total-val { padding: 16px 4px; text-align: right; color: #c084fc; font-size: 16px; }
@@ -827,11 +831,7 @@ export function openVolPopoutWindow(): Window | null {
   <div class="header">
     <div class="header-title">
       <span>Volumen (∑)</span>
-      <span class="badge" id="vol-count-badge">0 Räume</span>
-      <span style="font-size:11px; color:#9aa0ac; margin-left:12px; display:flex; align-items:center; gap:4px;">
-        Std.-Raumhöhe: 
-        <input id="input-default-height" type="number" step="0.01" min="0.1" style="width:58px; background:#15131b; border:1px solid #9333ea; border-radius:4px; padding:2px 4px; color:#a855f7; font-weight:bold; font-size:11px; outline:none; text-align:right;" /> m
-      </span>
+      <span class="badge" id="vol-count-badge">0 Flächen</span>
     </div>
     <div class="header-actions">
       <button class="btn-icon" id="btn-delete-all" title="Alle Volumenmessungen löschen">🗑️</button>
@@ -845,7 +845,7 @@ export function openVolPopoutWindow(): Window | null {
 
   <div class="content" id="vol-content">
     <div class="drop-hint">
-      📦 <b>Drag & Drop:</b> Gezeichnete Flächen aus dem Flächen-Fenster hierher ziehen, um sie in Volumen umzuwandeln!
+      💡 <b>Hinweis:</b> Alle gezeichneten Flächen werden hier automatisch aufgelistet. Geben Sie die <b>lichte Raumhöhe (m)</b> ein, damit das Volumen berechnet wird.
     </div>
     <table id="vol-table">
       <thead id="vol-thead"></thead>
@@ -853,14 +853,13 @@ export function openVolPopoutWindow(): Window | null {
       <tfoot id="vol-tfoot"></tfoot>
     </table>
     <div id="vol-empty" class="empty-state" style="display: none;">
-      Keine Raum-Volumen vorhanden.<br>
-      • Zeichnen Sie mit dem <b>Volumen-Werkzeug</b> Räume in der Karte, oder<br>
-      • Ziehen Sie bestehende Flächen per <b>Drag & Drop</b> hier hinein.
+      Keine gezeichneten Flächen vorhanden.<br>
+      • Zeichnen Sie mit dem <b>Flächen-</b> oder <b>Volumen-Werkzeug</b> Flächen auf der Karte.
     </div>
   </div>
 
   <div class="footer-tip">
-    Tipp: Geben Sie in der Spalte 'Lichte Höhe (m)' die jeweilige Raumhöhe ein. Das Volumen wird automatisch aus Grundfläche × Raumhöhe × Faktoren berechnet.
+    Tipp: Ohne Raumhöhe bleiben Flächen grau und fließen nicht in die Summe ein. Sobald Sie eine Höhe eingeben, wird das Volumen berechnet.
   </div>
 </body>
 </html>`);
@@ -908,17 +907,6 @@ export function openVolPopoutWindow(): Window | null {
     });
   }
 
-  const inputDefHeight = doc.getElementById('input-default-height') as HTMLInputElement;
-  if (inputDefHeight) {
-    inputDefHeight.value = String(useAppStore.getState().defaultRoomHeight || 2.50);
-    inputDefHeight.addEventListener('change', () => {
-      const val = parseFloat(inputDefHeight.value);
-      if (!isNaN(val) && val > 0) {
-        useAppStore.getState().setDefaultRoomHeight(val);
-      }
-    });
-  }
-
   // Table Drag & Drop and input listeners
   const tbody = doc.getElementById('vol-tbody');
   if (tbody) {
@@ -950,9 +938,12 @@ export function openVolPopoutWindow(): Window | null {
       if (!ann) return;
 
       if (target.classList.contains('input-height')) {
-        const val = parseFloat(target.value);
-        if (!isNaN(val) && val > 0) {
-          state.updateAnnotation(activeDoc.id, page, { ...ann, height: val } as any);
+        const raw = target.value.trim();
+        const val = parseFloat(raw);
+        if (raw === '' || isNaN(val) || val <= 0) {
+          state.updateAnnotation(activeDoc.id, page, { ...ann, height: undefined } as any);
+        } else {
+          state.updateAnnotation(activeDoc.id, page, { ...ann, type: 'measure-volume', height: val } as any);
         }
       } else if (target.classList.contains('input-factor')) {
         const colIdx = parseInt(target.dataset.colIdx || '0', 10);
@@ -1032,11 +1023,9 @@ export function openVolPopoutWindow(): Window | null {
           const pageAnns = activeDoc.annotations[data.page] || [];
           const ann = pageAnns.find((a) => a.id === data.annId);
           if (ann) {
-            // Convert area annotation to volume annotation!
             state.updateAnnotation(activeDoc.id, data.page, {
               ...ann,
-              type: 'measure-volume',
-              height: (ann as any).height ?? (state.defaultRoomHeight || 2.50)
+              type: 'measure-volume'
             } as any);
           }
         }
@@ -1080,11 +1069,6 @@ function renderVolPopoutContent() {
   const tbody = doc.getElementById('vol-tbody');
   const tfoot = doc.getElementById('vol-tfoot');
   const empty = doc.getElementById('vol-empty');
-  const inputDefH = doc.getElementById('input-default-height') as HTMLInputElement;
-
-  if (inputDefH && doc.activeElement !== inputDefH) {
-    inputDefH.value = String(state.defaultRoomHeight || 2.50);
-  }
 
   if (!activeDoc) {
     if (tbody) tbody.innerHTML = '';
@@ -1092,18 +1076,18 @@ function renderVolPopoutContent() {
     return;
   }
 
-  // Collect volume annotations
-  const volAnns: MeasureVolumeAnnotation[] = [];
+  // Collect ALL surface annotations (volume, area, circle) so drawn areas automatically appear
+  const volAnns: (MeasureVolumeAnnotation | MeasureAreaAnnotation | MeasureCircleAnnotation)[] = [];
   Object.values(activeDoc.annotations).forEach((pageAnns) => {
     pageAnns.forEach((ann) => {
-      if (ann.type === 'measure-volume') {
-        volAnns.push(ann as MeasureVolumeAnnotation);
+      if (ann.type === 'measure-volume' || ann.type === 'measure-area' || ann.type === 'measure-circle') {
+        volAnns.push(ann as any);
       }
     });
   });
   volAnns.sort((a, b) => a.createdAt - b.createdAt);
 
-  if (badge) badge.textContent = `${volAnns.length} Räume`;
+  if (badge) badge.textContent = `${volAnns.length} Flächen`;
 
   if (volAnns.length === 0) {
     if (tbody) tbody.innerHTML = '';
@@ -1133,27 +1117,33 @@ function renderVolPopoutContent() {
 
   volAnns.forEach((ann) => {
     const baseArea = parseFloat(ann.displayValue.replace(/[^\d.]/g, '')) || 0;
-    const height = ann.height ?? (state.defaultRoomHeight || 2.50);
-    const baseVol = baseArea * height;
+    const heightVal = (ann as MeasureVolumeAnnotation).height;
+    const hasHeight = heightVal !== undefined && heightVal !== null && !isNaN(heightVal) && heightVal > 0;
 
     const calcList = ann.calculations || [];
     const paddedCalcs = [...calcList];
     while (paddedCalcs.length < colCount) paddedCalcs.push('');
 
-    const finalResult = parseAndEval(baseVol, paddedCalcs.slice(0, colCount)) * (ann.isNegative ? -1 : 1);
-    totalSum += finalResult;
+    let finalResult = 0;
+    if (hasHeight) {
+      const baseVol = baseArea * heightVal!;
+      finalResult = parseAndEval(baseVol, paddedCalcs.slice(0, colCount)) * (ann.isNegative ? -1 : 1);
+      totalSum += finalResult;
+    }
 
-    trHtml += `<tr draggable="true" class="${ann.selected ? 'selected' : ''}" data-ann-id="${ann.id}" data-page="${ann.page}" title="Ziehen zum Verschieben ins Flächen-Fenster">
+    const rowClass = `${ann.selected ? 'selected' : ''} ${!hasHeight ? 'no-height' : ''}`;
+
+    trHtml += `<tr draggable="true" class="${rowClass}" data-ann-id="${ann.id}" data-page="${ann.page}" title="${hasHeight ? 'Volumen berechnet' : 'Raumhöhe eingeben, um Volumen zu berechnen'}">
       <td style="text-align:center;"><div class="color-dot" style="background:${ann.color || '#a855f7'};"></div></td>
       <td style="text-align:center;">
         <button class="btn-mode ${ann.isNegative ? 'neg' : 'pos'}" data-ann-id="${ann.id}" data-page="${ann.page}">
           ${ann.isNegative ? '-' : '+'}
         </button>
       </td>
-      <td style="color:#9aa0ac;">S. ${ann.page + 1}</td>
-      <td style="font-weight:bold;">${formatNum(baseArea)} ${unit}²</td>
+      <td style="color:${hasHeight ? '#9aa0ac' : '#72768d'};">S. ${ann.page + 1}</td>
+      <td style="font-weight:bold; color:${hasHeight ? '#e8eaed' : '#72768d'};">${formatNum(baseArea)} ${unit}²</td>
       <td style="padding:4px;">
-        <input type="number" step="0.01" min="0.1" class="input-height" data-ann-id="${ann.id}" data-page="${ann.page}" value="${height}" />
+        <input type="number" step="0.01" min="0.1" class="input-height" data-ann-id="${ann.id}" data-page="${ann.page}" value="${hasHeight ? heightVal : ''}" placeholder="Höhe in m" />
       </td>`;
 
     for (let c = 0; c < colCount; c++) {
@@ -1163,7 +1153,7 @@ function renderVolPopoutContent() {
       </td>`;
     }
 
-    trHtml += `<td class="result-cell">${formatNum(finalResult)} ${unit}³</td>
+    trHtml += `<td class="result-cell ${!hasHeight ? 'empty' : ''}">${hasHeight ? `${formatNum(finalResult)} ${unit}³` : '—'}</td>
       <td style="text-align:right;">
         <button class="btn-icon btn-del-row" data-ann-id="${ann.id}" data-page="${ann.page}" title="Löschen">🗑️</button>
       </td>
