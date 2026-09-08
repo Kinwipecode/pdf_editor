@@ -55,7 +55,7 @@ export function StatusBar({ activeDocId, cursorPos }: StatusBarProps) {
     <div className="status-bar">
       <div className="status-item" style={{ marginRight: 4 }}>
         <span style={{ color: 'var(--text-secondary)', marginRight: 4 }}>Version:</span>
-        <span style={{ fontWeight: 600, color: '#ffffff' }}>v1.0.0</span>
+        <span style={{ fontWeight: 600, color: '#ffffff' }}>v1.0.1</span>
       </div>
       <div className="sep" />
 

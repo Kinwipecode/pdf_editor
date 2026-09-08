@@ -250,7 +250,7 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
             }}
             title="PDF Editor Pro Version"
           >
-            v1.0.0
+            v1.0.1
           </span>
         </div>
       </div>
