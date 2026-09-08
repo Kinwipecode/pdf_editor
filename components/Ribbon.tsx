@@ -20,6 +20,7 @@ import { useAppStore, useActiveDocument } from '@/store/useAppStore';
 import type { ToolType } from '@/types';
 import { ColorPicker } from './ColorPicker';
 import { downloadPdfWithAnnotations } from '@/lib/pdfExport';
+import { ScalePresetDialog, calculateScalePixelsPerUnit } from './measure/ScalePresetDialog';
 
 
 const RIBBON_TABS = ['Start', 'Ansicht', 'Bearbeiten', 'Zeichnen', 'Messen', 'Seiten'] as const;
@@ -154,11 +155,12 @@ interface RibbonProps {
 
 export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>('Start');
+  const [scalePresetModalOpen, setScalePresetModalOpen] = useState(false);
 
   const {
     setZoom, setRotation, undo, redo, toggleSidebar, toggleAnnotationsVisible,
     openDocuments, activeTool, setActiveTool, activeColor, setActiveColor,
-    activeFillColor, setActiveFillColor,
+    activeFillColor, setActiveFillColor, setScale,
     deleteSelectedAnnotation, deleteAnnotation, addAnnotations, toggleOcrTransparency,
     ocrTransparencyEnabled, setOcrTransparency, calculatorOpen, toggleCalculator,
     distCalculatorOpen, toggleDistCalculator, activeDocumentId,
@@ -517,11 +519,54 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
               <ToolBtn icon={<MdCropFree />} label="Grob-Erkennung" tool="measure-rough-area" tooltip="Raum grob umreißen — System sucht die genauen Grenzen danach" />
             </RibbonGroup>
             <RibbonGroup label={
-              <span style={{ fontFamily: 'monospace', letterSpacing: '-0.5px' }}>
-                {doc && doc.scale.unit !== 'px' ? `1px = ${(1 / doc.scale.pixelsPerUnit).toPrecision(3)} ${doc.scale.unit}` : 'MAßSTAB'}
+              <span style={{ fontFamily: 'monospace', letterSpacing: '-0.5px', fontWeight: 600, color: '#4f8ef7' }}>
+                {doc && doc.scale?.ratio
+                  ? `MAßSTAB 1:${doc.scale.ratio}`
+                  : doc && doc.scale?.unit !== 'px'
+                    ? `1 ${doc.scale.unit} = ${doc.scale.pixelsPerUnit.toFixed(1)} px`
+                    : 'MAßSTAB'}
               </span>
             }>
-              <ToolBtn icon={<TbRulerMeasure />} label="Kalibrieren" tool="measure-calibrate" tooltip="Maßstab festlegen" />
+              <ToolBtn icon={<TbRulerMeasure />} label="Kalibrieren" tool="measure-calibrate" tooltip="Maßstab manuell an einer bekannten Strecke messen und kalibrieren" />
+              <ToolBtn
+                icon={<MdCalculate />}
+                label="Maßstab 1:X"
+                onClick={() => setScalePresetModalOpen(true)}
+                tooltip="Architekten-Maßstab direkt eingeben oder wählen (z.B. 1:100, 1:50, 1:200)"
+              />
+              <select
+                className="hud-select"
+                style={{ fontSize: 11, padding: '2px 4px', marginTop: 2, cursor: 'pointer', background: '#1e293b', borderColor: '#475569' }}
+                value={doc?.scale?.ratio ? String(doc.scale.ratio) : 'custom'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!doc) return;
+                  if (val === 'dialog') {
+                    setScalePresetModalOpen(true);
+                  } else {
+                    const ratio = parseFloat(val);
+                    if (!isNaN(ratio) && ratio > 0) {
+                      const unit = doc.scale?.unit && doc.scale.unit !== 'px' ? doc.scale.unit : 'm';
+                      const pxPerUnit = calculateScalePixelsPerUnit(ratio, unit);
+                      setScale(doc.id, { pixelsPerUnit: pxPerUnit, unit, ratio });
+                    }
+                  }
+                }}
+                title="Maßstab-Schnellauswahl"
+              >
+                <option value="20">1:20</option>
+                <option value="50">1:50</option>
+                <option value="100">1:100</option>
+                <option value="200">1:200</option>
+                <option value="500">1:500</option>
+                <option value="1000">1:1000</option>
+                <option value="dialog">Eigene 1:X...</option>
+                {!['20','50','100','200','500','1000'].includes(String(doc?.scale?.ratio ?? '')) && (
+                  <option value="custom">
+                    {doc?.scale?.ratio ? `1:${doc.scale.ratio}` : 'Kalibriert'}
+                  </option>
+                )}
+              </select>
             </RibbonGroup>
             <RibbonGroup label="Lupe">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 4px' }}>
@@ -702,6 +747,18 @@ export function Ribbon({ onOpenFile, activeDocId }: RibbonProps) {
           </>
         )}
       </div>
+
+      {scalePresetModalOpen && (
+        <ScalePresetDialog
+          initialRatio={doc?.scale?.ratio || 100}
+          initialUnit={doc?.scale?.unit && doc.scale.unit !== 'px' ? doc.scale.unit : 'm'}
+          onConfirm={(pixelsPerUnit, unit, ratio) => {
+            if (doc) setScale(doc.id, { pixelsPerUnit, unit, ratio });
+            setScalePresetModalOpen(false);
+          }}
+          onCancel={() => setScalePresetModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
