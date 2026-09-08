@@ -1,5 +1,6 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ScalePresetDialogProps {
   onConfirm: (pixelsPerUnit: number, unit: string, ratio: number) => void;
@@ -41,6 +42,12 @@ export function ScalePresetDialog({
 }: ScalePresetDialogProps) {
   const [ratioInput, setRatioInput] = useState<string>(String(initialRatio));
   const [unit, setUnit] = useState<string>(initialUnit || 'm');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   const numericRatio = parseFloat(ratioInput) || 100;
   const pixelsPerUnit = calculateScalePixelsPerUnit(numericRatio, unit);
@@ -56,7 +63,7 @@ export function ScalePresetDialog({
   const realValInUnit = (1 * numericRatio) / (unit === 'm' ? 100 : unit === 'mm' ? 10 : 1);
   const previewText = `1 cm auf dem Papier = ${realValInUnit.toLocaleString('de-DE', { maximumFractionDigits: 3 })} ${unit} in Wirklichkeit`;
 
-  return (
+  const modalContent = (
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal" style={{ minWidth: 420, maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
         <h3>Architekten-Maßstab einstellen (1:X)</h3>
@@ -176,10 +183,14 @@ export function ScalePresetDialog({
         </div>
 
         <div className="modal-actions" style={{ marginTop: 16 }}>
-          <button className="btn-secondary" onClick={onCancel}>Abbrechen</button>
-          <button className="btn-primary" onClick={handleConfirm}>Maßstab übernehmen</button>
+          <button type="button" className="btn-secondary" onClick={(e) => { e.stopPropagation(); onCancel(); }}>Abbrechen</button>
+          <button type="button" className="btn-primary" onClick={(e) => { e.stopPropagation(); handleConfirm(); }}>Maßstab übernehmen</button>
         </div>
       </div>
     </div>
   );
+
+  if (!mounted || typeof document === 'undefined') return null;
+
+  return createPortal(modalContent, document.body);
 }
